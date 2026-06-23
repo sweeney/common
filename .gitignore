@@ -1,0 +1,19 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test/coverage artifacts
+*.test
+*.out
+coverage.*
+
+# Go workspace file (local dev only)
+go.work
+go.work.sum
+
+# Editor/OS cruft
+.DS_Store
+.idea/
+.vscode/
