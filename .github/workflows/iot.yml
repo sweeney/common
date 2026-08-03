@@ -1,0 +1,79 @@
+name: iot
+
+on:
+  push:
+    branches: [main]
+    paths: ['iot/**', '.github/workflows/iot.yml']
+  pull_request:
+    branches: [main]
+    paths: ['iot/**', '.github/workflows/iot.yml']
+
+defaults:
+  run:
+    working-directory: iot
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: iot/go.sum
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -coverprofile=coverage.out ./...
+
+      # logic is the engine's decision core: no GPIO/MQTT/OS imports and time
+      # injected, so there is no excuse for an untested branch. status shares
+      # the rule because its JSON is a published wire contract.
+      - name: Enforce 100% coverage on logic and status
+        run: |
+          fail=0
+          for pkg in logic status; do
+            go test -coverprofile="$pkg.out" "./$pkg/" >/dev/null
+            cov=$(go tool cover -func="$pkg.out" | awk '/^total:/ {print $3}' | tr -d '%')
+            echo "$pkg coverage: ${cov}%"
+            if [ "$cov" != "100.0" ]; then
+              echo "ERROR: $pkg must be at 100% coverage, got ${cov}%"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo '### iot coverage'
+            echo '```'
+            go tool cover -func=coverage.out | tail -20
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: iot/go.sum
+
+      # The consumers deploy to a Pi Zero (32-bit ARMv6), so the module must
+      # cross-compile there even though the tests run on amd64.
+      - name: Cross-compile for Pi Zero
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: '6'
+        run: go build ./...
