@@ -5,7 +5,18 @@ deliberately empty for now — code lands here only once it is proven generic by
 more than one consumer. Premature extraction is how shared libraries get the
 wrong API and then break every consumer fixing it.
 
-## Module 1: `iot` (first to land)
+## Module 1: `iot` (landed, tagged `iot/v0.1.0`)
+
+> **Status: landed and tagged.** The generic engine lives in
+> `github.com/sweeney/common/iot` as sub-packages `profile`, `logic`, `gpio`,
+> `mqtt`, `status`, plus the `Run` daemon runtime in the root package — purely
+> generic, with no boiler/CH/HW vocabulary. It builds and tests clean (`logic`
+> and `status` at 100% coverage) and cross-compiles for `linux/arm`. A
+> wire-contract self-test pins the legacy boiler bytes (2-channel boiler-shaped
+> profile) plus a 1-channel doorbell smoke test. Both consumers — `boiler-sensor`
+> and `doorbell-sensor` — are green against it, so `iot/v0.1.0` is cut and they
+> pin the tag instead of a local `replace`.
+
 
 **Source of the code:** the sensor engine currently in
 `github.com/sweeney/boiler-sensor/internal/`. That repo is being generalized
@@ -26,12 +37,19 @@ tagged module.
 - `mqtt` — the resilient publisher: reconnect with capped backoff, offline
   buffering, last-will, heartbeat enrichment. This is the crown jewel and the
   strongest reason the shared module exists.
-- `status` + `web` — thread-safe status tracker and HTTP/JSON status server,
-  rendering channels generically from a caller-supplied profile.
+- `status` — thread-safe status tracker plus ordered JSON encoders, rendering
+  channels generically from a caller-supplied profile.
+- `Run` (root package) — the daemon runtime: poll loop, signals, STARTUP,
+  baseline → ready + scheduled HEARTBEAT, SHUTDOWN/LWT, tracker sync.
 
 **Explicitly NOT in `iot`:** the per-binary `SensorProfile` (channel/pin/event
 vocabulary, MQTT topics, payload root key, web title). Anything domain-specific —
 "boiler/CH/HW", "doorbell/PRESS" — stays in each `cmd/*-sensor` binary.
+
+Also not here: the **HTTP/HTML status page**. An earlier draft of this plan put a
+`web` package in `iot`; it was pulled back out because the UI is service-specific
+presentation, not engine. Each sensor repo owns its own `internal/web`, consuming
+`iot/status` for the snapshot and JSON.
 
 **Dependencies:** Paho MQTT + go-gpiocdev only. Targets 32-bit ARM (Pi Zero); no
 CGO in test paths; keep the dependency graph minimal.
@@ -57,7 +75,14 @@ boiler/doorbell work.
 
 ## Sequencing summary
 
-1. Generalize boiler-sensor in place (in its repo). ← in progress
-2. Build doorbell-sensor against the generalized packages (in boiler-sensor repo).
-3. Lift the engine here as module `iot`; tag `iot/v0.1.0`; both binaries import it.
-4. (Later, separate trigger) migrate `identity/common` packages here as modules.
+1. Generalize boiler-sensor in place (in its repo). ✅ done
+2. Lift the engine here as module `iot` (purely generic). ✅ done
+3. Migrate `boiler-sensor` onto `common/iot` via `replace`; golden bytes unchanged. ✅ done
+4. Build `doorbell-sensor` (own repo) against `common/iot` via `replace`. ✅ done
+5. Validate both consumers green, then tag `iot/v0.1.0` and pin it. ✅ done
+6. (Later, separate trigger) migrate `identity/common` packages here as modules.
+
+**Open question:** whether the per-repo `internal/web` status page should move
+here after all — the boiler and doorbell copies are currently byte-identical, so
+the "service-specific presentation" rationale has produced no divergence. Decide
+before a third sensor appears.
