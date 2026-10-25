@@ -15,10 +15,10 @@ only pulls the dependencies of the module it actually imports.
 | Module | Import path | Status | Pulls in |
 |---|---|---|---|
 | `iot` | `github.com/sweeney/common/iot` | **landed — `iot/v0.1.0`** | Paho MQTT, go-gpiocdev only |
-| `auth` | `github.com/sweeney/common/auth` | planned (migrate from identity) | golang-jwt |
-| `db` | `github.com/sweeney/common/db` | planned (migrate from identity) | modernc sqlite |
-| `backup` | `github.com/sweeney/common/backup` | planned (migrate from identity) | AWS SDK (R2/S3) |
-| … | | | (other identity/common packages, migrated lazily) |
+| config client | | candidate (copied today in statehouse, countinghouse, greenhouse) | stdlib only |
+| `db` | `github.com/sweeney/common/db` | candidate (move from identity/common, one module at a time) | modernc sqlite |
+| `backup` | `github.com/sweeney/common/backup` | candidate (move from identity/common, one module at a time) | AWS SDK (R2/S3) |
+| … | | | (other generic identity/common packages; `auth` stays in identity) |
 
 See [`PLAN.md`](PLAN.md) for what lands when and why.
 
@@ -28,7 +28,7 @@ Each module is tagged independently with a path-prefixed semver tag:
 
 ```
 iot/v0.1.0
-auth/v1.0.0
+db/v1.0.0
 ```
 
 Consumers pin an exact version (`go get github.com/sweeney/common/iot@v0.1.0`).
@@ -66,4 +66,5 @@ presentation, so each sensor binary rolls its own (see each repo's `internal/web
 A wire-contract self-test (`iot/wire_contract_test.go`) proves a 2-channel
 boiler-shaped profile reproduces the exact legacy boiler bytes, plus a 1-channel
 doorbell-shaped smoke test; `iot/runner_test.go` covers the runtime lifecycle.
-Both consumers (boiler + doorbell) are green against the tag. See `PLAN.md`.
+boiler-sensor is the live consumer; doorbell-sensor validated the API and is
+parked. `iot` is scoped to GPIO on/off sensors. See `PLAN.md`.

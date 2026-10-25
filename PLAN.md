@@ -1,88 +1,81 @@
 # Roadmap for `sweeney/common`
 
-This repo exists to hold shared Go code as **independent modules**. It is
-deliberately empty for now — code lands here only once it is proven generic by
-more than one consumer. Premature extraction is how shared libraries get the
-wrong API and then break every consumer fixing it.
+This repo is the home for Go code shared across Sweeney services, as
+**independent modules**: one per concern, each with its own `go.mod` and its
+own path-prefixed tags. Code lands here only once more than one real consumer
+shows what the general form is. Premature extraction is how shared libraries
+get the wrong API and then break every consumer fixing it.
 
 ## Module 1: `iot` (landed, tagged `iot/v0.1.0`)
 
-> **Status: landed and tagged.** The generic engine lives in
-> `github.com/sweeney/common/iot` as sub-packages `profile`, `logic`, `gpio`,
-> `mqtt`, `status`, plus the `Run` daemon runtime in the root package — purely
-> generic, with no boiler/CH/HW vocabulary. It builds and tests clean (`logic`
-> and `status` at 100% coverage) and cross-compiles for `linux/arm`. A
-> wire-contract self-test pins the legacy boiler bytes (2-channel boiler-shaped
-> profile) plus a 1-channel doorbell smoke test. Both consumers — `boiler-sensor`
-> and `doorbell-sensor` — are green against it, so `iot/v0.1.0` is cut and they
-> pin the tag instead of a local `replace`.
+The engine for **GPIO on/off sensors** on a Pi: sub-packages `profile`,
+`logic`, `gpio`, `mqtt`, `status`, plus the `Run` daemon runtime in the root
+package. It is purely generic, with no boiler/CH/HW vocabulary. It builds and
+tests clean (`logic` and `status` at 100% coverage) and cross-compiles for
+`linux/arm`. A wire-contract self-test pins the legacy boiler bytes (2-channel
+boiler-shaped profile) plus a 1-channel doorbell smoke test.
 
+**Consumers:** `boiler-sensor` is the one live consumer. `doorbell-sensor` was
+built against it to validate the API and is green, but it is parked
+(deprioritised, 2026-10-25) and not published. The doorbell smoke test in this
+module keeps the engine tested as generic in CI without it.
 
-**Source of the code:** the sensor engine currently in
-`github.com/sweeney/boiler-sensor/internal/`. That repo is being generalized
-from a hardwired two-channel heating daemon into a sensor-agnostic engine driven
-by a per-binary profile (see `boiler-sensor/REFACTOR.md`).
+**Scope, as re-planned 2026-10-25:** `iot` is for edge-triggered on/off
+inputs only. It is not a general MQTT library for the fleet:
 
-**Lands only after** the boiler-sensor refactor is complete AND a second consumer
-(a doorbell-press sensor on a separate Pi) has been built against the generalized
-packages in-repo. Two real consumers validate the API before we commit to it as a
-tagged module.
-
-**Expected contents (the proven-generic engine):**
-
-- `gpio` — N-channel `Reader` abstraction (real `go-gpiocdev` + fake), with raw
-  active-low inversion handled in one place.
-- `logic` — debounce / baseline / heartbeat detector, channel-agnostic
-  (map-keyed channels, configurable event names).
-- `mqtt` — the resilient publisher: reconnect with capped backoff, offline
-  buffering, last-will, heartbeat enrichment. This is the crown jewel and the
-  strongest reason the shared module exists.
-- `status` — thread-safe status tracker plus ordered JSON encoders, rendering
-  channels generically from a caller-supplied profile.
-- `Run` (root package) — the daemon runtime: poll loop, signals, STARTUP,
-  baseline → ready + scheduled HEARTBEAT, SHUTDOWN/LWT, tracker sync.
+- `netmon`, `ups-mqtt` and `tempest-mqtt` each grew their own publisher.
+  `iot/mqtt` is bound to the sensor profile and payload shape, so it never
+  fitted them.
+- `tanktemp` (DS18B20 numeric readings, 4–8 s sweeps) gets its own loop rather
+  than an extension here. Revisit a numeric reader once a second numeric
+  sensor exists.
 
 **Explicitly NOT in `iot`:** the per-binary `SensorProfile` (channel/pin/event
-vocabulary, MQTT topics, payload root key, web title). Anything domain-specific —
-"boiler/CH/HW", "doorbell/PRESS" — stays in each `cmd/*-sensor` binary.
-
-Also not here: the **HTTP/HTML status page**. An earlier draft of this plan put a
-`web` package in `iot`; it was pulled back out because the UI is service-specific
-presentation, not engine. Each sensor repo owns its own `internal/web`, consuming
-`iot/status` for the snapshot and JSON.
+vocabulary, MQTT topics, payload root key, web title), and the HTTP/HTML status
+page. Each sensor repo owns its own `internal/web`, consuming `iot/status` for
+the snapshot and JSON. (The earlier open question of moving the page here was
+to be settled "before a third sensor appears"; the third sensor, tanktemp, won't
+use `iot/status`, so the page stays per repo.)
 
 **Dependencies:** Paho MQTT + go-gpiocdev only. Targets 32-bit ARM (Pi Zero); no
 CGO in test paths; keep the dependency graph minimal.
 
-**First tag:** `iot/v0.1.0` (pre-1.0: API may still move between minor versions).
+## Next candidates
 
-## Later: migrate `identity/common`
+Each lands as its own module, under its own trigger. None is part of the `iot`
+work.
 
-The existing shared packages in `github.com/sweeney/identity/common` (`auth`,
-`apierr`, `backup`, `cli`, `db`, `httputil`, `ratelimit`, `secrets`, `spec`) will
-move here as their own modules — split by dependency weight rather than ported as
-one fat module.
+1. **Config-service client.** statehouse, countinghouse and greenhouse each
+   carry their own copy of the config.swee.net Fetcher and of the
+   `DeviceConfig` mirror of the `devices_<site>` namespace ("mirrors
+   statehouse", "copied from statehouse"). Three real consumers make this the
+   strongest candidate. It takes a token-source interface, as countinghouse's
+   copy already does, so it does not depend on `identity`.
+2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
+   `retry` packages and similar publishers (capped backoff, retained state,
+   `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
+   bridge). Extract once the two stop diverging.
 
-**Trigger:** when a non-identity consumer needs them — e.g. when boiler-service
-grows a server component that needs token auth (`auth`). Not before; today they
-have only two tightly-related consumers (identity + config), so the split would be
-cosmetic.
+## `identity/common`: move gradually, not in one go
 
-**Cost to plan for:** moving changes the import path
-(`…/identity/common/*` → `…/common/*`), a breaking change for identity + config.
-Batch it deliberately as a single coordinated migration; do not bundle it into the
-boiler/doorbell work.
+`github.com/sweeney/identity/common` (`auth`, `apierr`, `backup`, `cli`, `db`,
+`httputil`, `ratelimit`, `secrets`, `spec`) is at v0.6.0 with six consumers
+(identity, config, countinghouse, greenhouse, mqttproxy, statehouse). Moving it
+all here would be one breaking import-path change across six repos at once, so
+we don't.
+
+- **`auth` stays in identity.** It is identity's own client library.
+- **The generic packages move one module at a time**, when a consumer is being
+  changed anyway. The first such moment is bumping statehouse and greenhouse
+  off v0.3.0.
 
 ## Sequencing summary
 
 1. Generalize boiler-sensor in place (in its repo). ✅ done
 2. Lift the engine here as module `iot` (purely generic). ✅ done
-3. Migrate `boiler-sensor` onto `common/iot` via `replace`; golden bytes unchanged. ✅ done
-4. Build `doorbell-sensor` (own repo) against `common/iot` via `replace`. ✅ done
-5. Validate both consumers green, then tag `iot/v0.1.0` and pin it. ✅ done
-6. (Later, separate trigger) migrate `identity/common` packages here as modules.
-
-**Open question:** whether the per-repo `internal/web` status page should move
-here after all — the boiler and doorbell copies are currently byte-identical, so
-the "service-specific presentation" rationale has produced no divergence. Decide
-before a third sensor appears.
+3. Migrate `boiler-sensor` onto `common/iot`; golden bytes unchanged. ✅ done
+4. Build `doorbell-sensor` (own repo) against `common/iot`. ✅ done, then parked
+5. Validate consumers green, tag `iot/v0.1.0` and pin it. ✅ done
+6. Publish this repo and the tag; ship boiler-sensor on the tag. ⏳ in progress
+7. Config-service client module (next candidate 1). Separate trigger.
+8. Generic `identity/common` packages, one module at a time. Separate trigger.
