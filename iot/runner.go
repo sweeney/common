@@ -45,11 +45,11 @@ type RunConfig struct {
 	Heartbeat time.Duration
 	Poll      time.Duration
 
-	Now         func() time.Time          // default time.Now
-	Tick        <-chan time.Time          // default time.NewTicker(Poll).C
-	Signals     <-chan os.Signal          // default SIGINT/SIGTERM
+	Now         func() time.Time           // default time.Now
+	Tick        <-chan time.Time           // default time.NewTicker(Poll).C
+	Signals     <-chan os.Signal           // default SIGINT/SIGTERM
 	NetworkInfo func() *status.NetworkInfo // default ReadNetworkInfoFromEnv
-	Logger      *log.Logger               // default log.Default()
+	Logger      *log.Logger                // default log.Default()
 }
 
 // Run publishes the startup event, then drives the poll/debounce/publish loop
