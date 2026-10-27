@@ -16,7 +16,7 @@ import (
 // Uploader is the interface for uploading a backup file to object storage.
 // The concrete implementation uses Cloudflare R2 via the S3-compatible API.
 //
-//go:generate mockgen -destination=mocks/mock_uploader.go -package=mocks github.com/sweeney/identity/common/backup Uploader
+//go:generate mockgen -destination=mocks/mock_uploader.go -package=mocks github.com/sweeney/common/backup Uploader
 type Uploader interface {
 	// Upload uploads the file at localPath to the given key in the configured bucket.
 	Upload(ctx context.Context, key, localPath string) error

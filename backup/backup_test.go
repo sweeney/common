@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/sweeney/identity/common/backup"
-	"github.com/sweeney/identity/common/backup/mocks"
+	"github.com/sweeney/common/backup"
+	"github.com/sweeney/common/backup/mocks"
 )
 
 // --- TriggerAsync coalescing ---

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/sweeney/identity/common/backup"
+	"github.com/sweeney/common/backup"
 )
 
 // redact_test.go covers issue #45 point 4. The errors a backup surfaces are

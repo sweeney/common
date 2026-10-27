@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/sweeney/identity/common/backup"
-	"github.com/sweeney/identity/common/backup/mocks"
+	"github.com/sweeney/common/backup"
+	"github.com/sweeney/common/backup/mocks"
 )
 
 // status_test.go covers issue #45 point 1: the Manager knew what had happened

@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/sweeney/identity/common/httputil"
+	"github.com/sweeney/common/web/httputil"
 )
 
 func requestFrom(remoteAddr, forwarded string) *http.Request {

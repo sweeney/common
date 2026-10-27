@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/sweeney/identity/common/backup"
+	"github.com/sweeney/common/backup"
 )
 
 // BackupConfig holds everything needed for backup CLI operations.

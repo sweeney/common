@@ -56,18 +56,49 @@ work.
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
    bridge). Extract once the two stop diverging.
 
-## `identity/common`: move gradually, not in one go
+## Modules 2–4: `db`, `backup`, `web` (moved from `identity/common`)
 
-`github.com/sweeney/identity/common` (`auth`, `apierr`, `backup`, `cli`, `db`,
-`httputil`, `ratelimit`, `secrets`, `spec`) is at v0.6.0 with six consumers
-(identity, config, countinghouse, greenhouse, mqttproxy, statehouse). Moving it
-all here would be one breaking import-path change across six repos at once, so
-we don't.
+The generic service-infrastructure packages of
+`github.com/sweeney/identity/common` move here as of its `common/v0.6.0`,
+imported **with their history** (from identity's initial commit; PR references
+rewritten to `sweeney/identity#N`). Split by dependency weight:
 
-- **`auth` stays in identity.** It is identity's own client library.
-- **The generic packages move one module at a time**, when a consumer is being
-  changed anyway. The first such moment is bumping statehouse and greenhouse
-  off v0.3.0.
+| Module | Packages (was `identity/common/…`) | Pulls in | Consumers |
+|---|---|---|---|
+| `db` | `db` | modernc sqlite | identity, config, countinghouse |
+| `backup` | `backup`, `backup/cli` (was `cli`), `backup/mocks` | AWS SDK, sqlite | identity, config, countinghouse |
+| `web` | `apierr`, `httputil`, `ratelimit` | `x/time` | identity, config |
+
+`httputil` moves with `ratelimit`, which keys on `httputil.ExtractClientIP`.
+`apierr` is 12 lines, so it rides in the light `web` module.
+
+**A pure move.** No code changes beyond import paths; dependency versions are
+pinned to identity/common v0.6.0's. Every test comes along and passes unchanged
+(167 of 167). The `schema_migrations` table and its contents and backup's R2
+key layout (`ServiceName` still defaults to `"identity"`) are unchanged, so a
+deployed database or bucket needs nothing.
+
+**Staying in `identity/common`:** `auth` (identity's own client library; moving
+it here too is an open option, easiest once it is nearly all that is left),
+`spec`, and `secrets` (identity-only; will import `sweeney/common/db`).
+
+**Consumer status (2026-10-28):** config, countinghouse and statehouse on
+identity/common v0.6.0; mqttproxy v0.4.0; greenhouse v0.3.0. greenhouse,
+statehouse and mqttproxy import only `auth`/`spec` and need no import changes;
+greenhouse should still come up to v0.6.0 for the September security fixes.
+
+**Order of work** (each step ends green):
+
+1. This repo: land the three modules and tag `db/v0.1.0`, `backup/v0.1.0`,
+   `web/v0.1.0`.
+2. identity: switch to the new modules, delete the moved packages from
+   `identity/common`, point `secrets` at `common/db`, tag `identity/common`
+   v0.7.0 (a minor bump: packages removed). v0.6.0 stays valid meanwhile.
+3. config: move to the new modules + identity/common v0.7.0.
+4. countinghouse: the same.
+5. greenhouse, statehouse, mqttproxy: bump to v0.7.0 when next touched; the AWS
+   SDK leaves their module graph. sqlite stays (via `secrets`) unless `auth`
+   gets its own `go.mod`.
 
 ## Sequencing summary
 
@@ -77,5 +108,6 @@ we don't.
 4. Build `doorbell-sensor` (own repo) against `common/iot`. ✅ done, then parked
 5. Validate consumers green, tag `iot/v0.1.0` and pin it. ✅ done
 6. Publish this repo and the tag; ship boiler-sensor on the tag. ⏳ in progress
-7. Config-service client module (next candidate 1). Separate trigger.
-8. Generic `identity/common` packages, one module at a time. Separate trigger.
+7. Move `db`, `backup`, `web` here from `identity/common`, then migrate
+   identity, config and countinghouse. ⏳ in progress
+8. Config-service client module (next candidate 1). Separate trigger.

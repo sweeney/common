@@ -1,0 +1,51 @@
+name: web
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/web.yml']
+  pull_request:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/web.yml']
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: web/go.sum
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: web/go.sum
+
+      # Consumers run on 64-bit Linux hosts and Pis, so the module must
+      # cross-compile there even though the tests run on amd64.
+      - name: Cross-compile for linux/arm64
+        env:
+          GOOS: linux
+          GOARCH: arm64
+        run: go build ./...

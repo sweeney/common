@@ -15,10 +15,12 @@ only pulls the dependencies of the module it actually imports.
 | Module | Import path | Status | Pulls in |
 |---|---|---|---|
 | `iot` | `github.com/sweeney/common/iot` | **landed — `iot/v0.1.0`** | Paho MQTT, go-gpiocdev only |
+| `db` | `github.com/sweeney/common/db` | **landed — `db/v0.1.0`** (from identity/common) | modernc sqlite |
+| `backup` | `github.com/sweeney/common/backup` | **landed — `backup/v0.1.0`** (from identity/common) | AWS SDK (R2/S3), sqlite |
+| `web` | `github.com/sweeney/common/web` | **landed — `web/v0.1.0`** (from identity/common) | `x/time` only |
 | config client | | candidate (copied today in statehouse, countinghouse, greenhouse) | stdlib only |
-| `db` | `github.com/sweeney/common/db` | candidate (move from identity/common, one module at a time) | modernc sqlite |
-| `backup` | `github.com/sweeney/common/backup` | candidate (move from identity/common, one module at a time) | AWS SDK (R2/S3) |
-| … | | | (other generic identity/common packages; `auth` stays in identity) |
+
+`auth`, `spec` and `secrets` stay in `github.com/sweeney/identity/common`.
 
 See [`PLAN.md`](PLAN.md) for what lands when and why.
 
@@ -28,7 +30,7 @@ Each module is tagged independently with a path-prefixed semver tag:
 
 ```
 iot/v0.1.0
-db/v1.0.0
+db/v0.1.0
 ```
 
 Consumers pin an exact version (`go get github.com/sweeney/common/iot@v0.1.0`).
