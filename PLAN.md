@@ -67,10 +67,11 @@ rewritten to `sweeney/identity#N`). Split by dependency weight:
 |---|---|---|---|
 | `db` | `db` | modernc sqlite | identity, config, countinghouse |
 | `backup` | `backup`, `backup/cli` (was `cli`), `backup/mocks` | AWS SDK, sqlite | identity, config, countinghouse |
-| `web` | `apierr`, `httputil`, `ratelimit` | `x/time` | identity, config |
+| `web` | `apierr`, `httputil`, `ratelimit`; `spec` from `web/v0.2.0` | `x/time`, `yaml.v3` | identity, config; `spec` also countinghouse, greenhouse, statehouse |
 
 `httputil` moves with `ratelimit`, which keys on `httputil.ExtractClientIP`.
-`apierr` is 12 lines, so it rides in the light `web` module.
+`apierr` (12 lines) and `spec` (32 lines, OpenAPI YAML→JSON) ride in the light
+`web` module rather than getting modules of their own.
 
 **A pure move.** No code changes beyond import paths; dependency versions are
 pinned to identity/common v0.6.0's. Every test comes along and passes unchanged
@@ -78,27 +79,31 @@ pinned to identity/common v0.6.0's. Every test comes along and passes unchanged
 key layout (`ServiceName` still defaults to `"identity"`) are unchanged, so a
 deployed database or bucket needs nothing.
 
-**Staying in `identity/common`:** `auth` (identity's own client library; moving
-it here too is an open option, easiest once it is nearly all that is left),
-`spec`, and `secrets` (identity-only; will import `sweeney/common/db`).
+**Staying in `identity/common`: only `auth`.** It changes in lockstep with
+identity's token issuer (3 of its 9 commits also changed `internal/auth/jwt.go`,
+and identity's tests check issued tokens against the verifier), so it stays
+beside the server. Decided 2026-10-28; the user would still consider moving it.
+`secrets` has no users outside identity, so it moves into identity's
+`internal/` rather than here.
 
 **Consumer status (2026-10-28):** config, countinghouse and statehouse on
-identity/common v0.6.0; mqttproxy v0.4.0; greenhouse v0.3.0. greenhouse,
-statehouse and mqttproxy import only `auth`/`spec` and need no import changes;
-greenhouse should still come up to v0.6.0 for the September security fixes.
+identity/common v0.6.0; mqttproxy v0.4.0; greenhouse v0.3.0. greenhouse and
+statehouse import only `auth` and `spec`, mqttproxy only `auth`; `spec`'s import
+path changes when they bump. greenhouse should come up anyway, for the September
+security fixes.
 
 **Order of work** (each step ends green):
 
 1. This repo: land the three modules and tag `db/v0.1.0`, `backup/v0.1.0`,
-   `web/v0.1.0`.
+   `web/v0.1.0` ✅; add `spec` as `web/v0.2.0`.
 2. identity: switch to the new modules, delete the moved packages from
-   `identity/common`, point `secrets` at `common/db`, tag `identity/common`
-   v0.7.0 (a minor bump: packages removed). v0.6.0 stays valid meanwhile.
+   `identity/common`, move `secrets` into `internal/` (importing `common/db`),
+   tag `identity/common` v0.7.0 (a minor bump: packages removed). It then holds
+   only `auth`, depending on jwt and `x/sync`. v0.6.0 stays valid meanwhile.
 3. config: move to the new modules + identity/common v0.7.0.
 4. countinghouse: the same.
-5. greenhouse, statehouse, mqttproxy: bump to v0.7.0 when next touched; the AWS
-   SDK leaves their module graph. sqlite stays (via `secrets`) unless `auth`
-   gets its own `go.mod`.
+5. greenhouse, statehouse, mqttproxy: bump to v0.7.0 and `web/spec`. The AWS
+   SDK and sqlite leave their module graphs.
 
 ## Sequencing summary
 
@@ -108,6 +113,7 @@ greenhouse should still come up to v0.6.0 for the September security fixes.
 4. Build `doorbell-sensor` (own repo) against `common/iot`. ✅ done, then parked
 5. Validate consumers green, tag `iot/v0.1.0` and pin it. ✅ done
 6. Publish this repo and the tag; ship boiler-sensor on the tag. ⏳ in progress
-7. Move `db`, `backup`, `web` here from `identity/common`, then migrate
-   identity, config and countinghouse. ⏳ in progress
+7. Move `db`, `backup`, `web` (with `spec`) here from `identity/common`, then
+   migrate identity, config, countinghouse, greenhouse, statehouse and
+   mqttproxy. ⏳ in progress
 8. Config-service client module (next candidate 1). Separate trigger.

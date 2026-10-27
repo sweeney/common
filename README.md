@@ -17,10 +17,10 @@ only pulls the dependencies of the module it actually imports.
 | `iot` | `github.com/sweeney/common/iot` | **landed — `iot/v0.1.0`** | Paho MQTT, go-gpiocdev only |
 | `db` | `github.com/sweeney/common/db` | **landed — `db/v0.1.0`** (from identity/common) | modernc sqlite |
 | `backup` | `github.com/sweeney/common/backup` | **landed — `backup/v0.1.0`** (from identity/common) | AWS SDK (R2/S3), sqlite |
-| `web` | `github.com/sweeney/common/web` | **landed — `web/v0.1.0`** (from identity/common) | `x/time` only |
+| `web` | `github.com/sweeney/common/web` | **landed — `web/v0.2.0`** (from identity/common) | `x/time`, `yaml.v3` |
 | config client | | candidate (copied today in statehouse, countinghouse, greenhouse) | stdlib only |
 
-`auth`, `spec` and `secrets` stay in `github.com/sweeney/identity/common`.
+`auth` stays in `github.com/sweeney/identity/common`, identity's own client library.
 
 See [`PLAN.md`](PLAN.md) for what lands when and why.
 
