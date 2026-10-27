@@ -86,7 +86,7 @@ beside the server. Decided 2026-10-28; the user would still consider moving it.
 `secrets` has no users outside identity, so it moves into identity's
 `internal/` rather than here.
 
-**Consumer status (2026-10-28):** config, countinghouse and statehouse on
+**Consumer status (2026-10-28):** identity on the new modules (v0.7.0 tagged). config, countinghouse and statehouse on
 identity/common v0.6.0; mqttproxy v0.4.0; greenhouse v0.3.0. greenhouse and
 statehouse import only `auth` and `spec`, mqttproxy only `auth`; `spec`'s import
 path changes when they bump. greenhouse should come up anyway, for the September
@@ -99,7 +99,8 @@ security fixes.
 2. identity: switch to the new modules, delete the moved packages from
    `identity/common`, move `secrets` into `internal/` (importing `common/db`),
    tag `identity/common` v0.7.0 (a minor bump: packages removed). It then holds
-   only `auth`, depending on jwt and `x/sync`. v0.6.0 stays valid meanwhile.
+   only `auth`, depending on jwt and `x/sync`. v0.6.0 stays valid meanwhile. ✅
+   (sweeney/identity#48, tagged `common/v0.7.0`)
 3. config: move to the new modules + identity/common v0.7.0.
 4. countinghouse: the same.
 5. greenhouse, statehouse, mqttproxy: bump to v0.7.0 and `web/spec`. The AWS
