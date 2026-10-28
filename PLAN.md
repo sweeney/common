@@ -86,25 +86,40 @@ beside the server. Decided 2026-10-28; the user would still consider moving it.
 `secrets` has no users outside identity, so it moves into identity's
 `internal/` rather than here.
 
-**Consumer status (2026-10-28):** identity on the new modules (v0.7.0 tagged). config, countinghouse and statehouse on
-identity/common v0.6.0; mqttproxy v0.4.0; greenhouse v0.3.0. greenhouse and
-statehouse import only `auth` and `spec`, mqttproxy only `auth`; `spec`'s import
-path changes when they bump. greenhouse should come up anyway, for the September
-security fixes.
+**Consumer status: migration complete.** Every consumer is on
+the new modules and identity/common v0.7.0, and each is deployed:
+
+| Consumer | Change | PR | Deployed |
+|---|---|---|---|
+| identity | uses `db`, `backup`, `web`; `identity/common` cut to `auth` | sweeney/identity#48 | 88c5b83, 2026-10-28 |
+| config | `db`, `backup`, `web` + v0.7.0 | sweeney/config#6 | 35de216, 2026-10-28 |
+| countinghouse | `db`, `backup`, `web/spec` + v0.7.0 | sweeney/countinghouse#58 | 20904de, 2026-10-28 |
+| greenhouse | `web/spec` + v0.7.0 (from v0.3.0), 503 on `ErrKeysUnavailable` | sweeney/greenhouse#38 | 300d373, 2026-10-28 |
+| statehouse | `web/spec` + v0.7.0 | sweeney/statehouse#76 | 00bca8b, 2026-10-28 |
+| mqttproxy | v0.7.0 (from v0.4.0), `auth` only | sweeney/mqttproxy#1 | 6823fbe |
+
+The `schema_migrations` ledgers and R2 key layouts are unchanged everywhere.
+identity's deploy also brought its own ledger adoption (sweeney/identity#47),
+which was rehearsed against a snapshot of production first (sweeney/identity#50).
+greenhouse, statehouse and mqttproxy no longer pull in the AWS SDK or sqlite.
+
+Follow-ups found along the way: `Retry-After: 0` from `web/ratelimit` at rates
+of 2/s and above (sweeney/common#1); audience enforcement for countinghouse and
+greenhouse (warn-only first).
 
 **Order of work** (each step ends green):
 
 1. This repo: land the three modules and tag `db/v0.1.0`, `backup/v0.1.0`,
-   `web/v0.1.0` ✅; add `spec` as `web/v0.2.0`.
+   `web/v0.1.0` ✅; add `spec` as `web/v0.2.0` ✅.
 2. identity: switch to the new modules, delete the moved packages from
    `identity/common`, move `secrets` into `internal/` (importing `common/db`),
    tag `identity/common` v0.7.0 (a minor bump: packages removed). It then holds
    only `auth`, depending on jwt and `x/sync`. v0.6.0 stays valid meanwhile. ✅
    (sweeney/identity#48, tagged `common/v0.7.0`)
-3. config: move to the new modules + identity/common v0.7.0.
-4. countinghouse: the same.
+3. config: move to the new modules + identity/common v0.7.0. ✅
+4. countinghouse: the same. ✅
 5. greenhouse, statehouse, mqttproxy: bump to v0.7.0 and `web/spec`. The AWS
-   SDK and sqlite leave their module graphs.
+   SDK and sqlite leave their module graphs. ✅
 
 ## Sequencing summary
 
@@ -116,5 +131,5 @@ security fixes.
 6. Publish this repo and the tag; ship boiler-sensor on the tag. ⏳ in progress
 7. Move `db`, `backup`, `web` (with `spec`) here from `identity/common`, then
    migrate identity, config, countinghouse, greenhouse, statehouse and
-   mqttproxy. ⏳ in progress
+   mqttproxy. ✅ done
 8. Config-service client module (next candidate 1). Separate trigger.
