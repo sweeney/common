@@ -91,28 +91,17 @@ func TestDifferentIPsHaveIndependentLimits(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w2.Code)
 }
 
-// TestRetryAfterHeader drives the middleware into a 429 at a range of rates and
-// checks the Retry-After header it sends.
-//
-// Retry-After (RFC 9110 §10.2.3) is a whole number of seconds. The header tells
-// a well-behaved client how long to back off, so the value must never be
-// shorter than the time it takes the bucket to refill one token (1/rate
-// seconds): if it is, the client retries too early and hits another 429.
-//
-// That is exactly what sweeney/common#1 reported. The header used to be
-// formatted with fmt.Sprintf("%.0f", 1/rate), which rounds to nearest (ties to
-// even), so every rate >= 2 req/s produced "Retry-After: 0" — an instruction to
-// retry immediately. The 2/s and 5/s rows below are the limiters config and
-// identity run in production.
-//
-// The expected value is therefore ceil(1/rate), with a floor of 1 second.
+// TestRetryAfterHeader checks the Retry-After header sent with a 429. It must
+// be the token refill interval rounded up to whole seconds and never 0: a
+// shorter value sends obedient clients straight into another 429. The 2/s, 5/s
+// and 1-per-12s rows are the limiters identity and config run in production.
 func TestRetryAfterHeader(t *testing.T) {
 	tests := []struct {
 		name string
 		rate float64
 		want string
 	}{
-		// Sub-second refill intervals. These all sent "0" before the fix.
+		// Sub-second refill intervals.
 		{name: "identity general limiter, 2/s (1/rate = 0.5s)", rate: 2, want: "1"},
 		{name: "config API limiter, 5/s (1/rate = 0.2s)", rate: 5, want: "1"},
 		{name: "fast limiter, 100/s (1/rate = 0.01s)", rate: 100, want: "1"},
@@ -120,20 +109,18 @@ func TestRetryAfterHeader(t *testing.T) {
 		// Exactly one second: the boundary between the two regimes.
 		{name: "1/s (1/rate = 1s)", rate: 1, want: "1"},
 
-		// Fractional intervals above a second must round UP, not to nearest.
-		// 0.4/s is 2.5s; "%.0f" gave "2" (ties to even), too short by half a second.
+		// Fractional intervals round up, not to nearest.
 		{name: "0.4/s (1/rate = 2.5s)", rate: 0.4, want: "3"},
-		// 0.3/s is 3.33…s; rounding to nearest gave "3".
 		{name: "0.3/s (1/rate = 3.33s)", rate: 0.3, want: "4"},
 
-		// Whole-second intervals are unchanged by the fix.
-		{name: "0.5/s (1/rate = 2s), the original test case", rate: 0.5, want: "2"},
+		// Whole-second intervals are reported exactly.
+		{name: "0.5/s (1/rate = 2s)", rate: 0.5, want: "2"},
 		{name: "identity auth limiter, 1 per 12s", rate: float64(rate.Every(12 * time.Second)), want: "12"},
 
-		// A limiter that never refills reports the longest wait it can
-		// represent (about 292 years) rather than "+Inf", which is not a valid
-		// header value. retryafter_test.go covers this and the other edges.
-		{name: "zero rate never refills", rate: 0, want: "9223372036"},
+		// Limiters slower than visitor cleanup are capped at the cleanup
+		// horizon: 3 min idle + 1 min tick + 1 s margin. See retryafter_test.go.
+		{name: "zero rate, reset by cleanup", rate: 0, want: "241"},
+		{name: "1 per day, reset by cleanup", rate: float64(rate.Every(24 * time.Hour)), want: "241"},
 	}
 
 	for _, tt := range tests {

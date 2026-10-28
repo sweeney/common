@@ -101,12 +101,20 @@ func (l *Limiter) evictOldestLocked() bool {
 	return true
 }
 
-// cleanupLoop removes visitors that haven't been seen in the last 3 minutes.
+// Visitor cleanup timings. A visitor idle for longer than visitorIdleTimeout
+// is dropped at the next cleanup tick, and its next request starts with a
+// fresh, full bucket. retryAfterSeconds relies on this to cap Retry-After.
+const (
+	visitorIdleTimeout = 3 * time.Minute
+	cleanupInterval    = time.Minute
+)
+
+// cleanupLoop removes visitors that haven't been seen for visitorIdleTimeout.
 func (l *Limiter) cleanupLoop() {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		l.Cleanup(3 * time.Minute)
+		l.Cleanup(visitorIdleTimeout)
 	}
 }
 
@@ -138,14 +146,15 @@ func (l *Limiter) VisitorCount() int {
 //
 // A request over the limit gets 429 Too Many Requests with a JSON error body
 // and a Retry-After header: the time for the bucket to refill one token, in
-// whole seconds rounded up, never less than 1. See retryAfterSeconds.
+// whole seconds rounded up, between 1 and maxRetryAfterSeconds (241). See
+// retryAfterSeconds.
 func (l *Limiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := httputil.ExtractClientIP(r, l.trustProxy)
 		limiter := l.getVisitor(ip)
 
 		if !limiter.Allow() {
-			w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds(l.rate), 10))
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(l.rate)))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
 			json.NewEncoder(w).Encode(map[string]string{
@@ -159,64 +168,52 @@ func (l *Limiter) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// maxRetryAfterSeconds is the longest Retry-After the middleware sends: the
-// longest interval a time.Duration can hold, about 292 years. It is what a
-// limiter that never refills (rate 0) reports, and the cap for rates so slow
-// their refill interval would overflow time.Duration.
-const maxRetryAfterSeconds = int64(math.MaxInt64 / int64(time.Second))
+// retryAfterMargin is added to the cleanup horizon to allow for a late ticker
+// tick or a retry that races the tick that would have reset it.
+const retryAfterMargin = time.Second
 
-// retryAfterSeconds returns the Retry-After value, in whole seconds, that the
-// middleware sends with a 429 for a limiter refilling at rate r.
+// maxRetryAfterSeconds caps Retry-After at the cleanup horizon: the longest an
+// idle client can wait before cleanup drops its visitor and resets its bucket
+// (the idle timeout, plus up to one tick for cleanup to notice, plus the
+// margin). That is 241 seconds. Waiting any longer than this gains nothing,
+// whatever the rate. A small cap also keeps the value safe for clients that
+// overflow on large delays (e.g. JavaScript setTimeout beyond about 24.8 days).
+const maxRetryAfterSeconds = int((visitorIdleTimeout + cleanupInterval + retryAfterMargin) / time.Second)
+
+// retryAfterSeconds returns the Retry-After value, in whole seconds, sent with
+// a 429 for a limiter refilling at rate r.
 //
-// Retry-After (RFC 9110 §10.2.3) is a whole number of seconds telling the
-// client how long to wait. A denied request has found its bucket empty, and the
-// bucket gains one token every 1/r seconds, so that is the shortest useful
-// wait. The result is 1/r rounded UP, and never less than 1:
+// The value is the time to refill one token, 1/r, rounded up, never less than
+// 1 and never more than maxRetryAfterSeconds. Rounding down or to nearest would
+// tell clients to retry before a token is available, into another 429; 0 would
+// tell them to retry at once.
 //
-//   - Rounding to nearest, as this used to do with fmt.Sprintf("%.0f", 1/r),
-//     sends "0" for every r >= 2 req/s, telling clients to retry at once into
-//     another 429 (sweeney/common#1). It also under-reports intervals such as
-//     2.5s as "2".
-//   - A value of 0 is never sent: any interval under a second still means
-//     "not yet", and 1 is the shortest wait the header can express.
+// The interval is truncated to whole nanoseconds before rounding up in integer
+// arithmetic. Rounding 1/r as a float is off by one for many rate.Every
+// intervals: 1/(1/49) is 49.00000000000001, which math.Ceil makes 50.
 //
-// The interval is first truncated to whole nanoseconds, then rounded up to
-// whole seconds in integer arithmetic. Doing the rounding on 1/r as a float
-// would be wrong: rate.Every(49*time.Second) stores 1/49, and 1/(1/49) is
-// 49.00000000000001 in float64, which math.Ceil turns into 50. Truncating to a
-// nanosecond first discards that rounding noise. It could only under-report if
-// the true interval were a whole number of seconds plus less than a
-// nanosecond, which no real limiter configuration is.
-//
-// Rates that are zero, negative or NaN never refill (rate.Limiter treats r <= 0
-// as "no new tokens"), so they get maxRetryAfterSeconds, as do positive rates
-// so small the interval overflows time.Duration. rate.Inf never denies, so the
-// middleware does not call this for it; it would get the 1-second floor.
-func retryAfterSeconds(r rate.Limit) int64 {
-	// NaN fails every comparison, so test for it explicitly alongside r <= 0.
+// Rates that are zero, negative or NaN never refill the bucket, so they get the
+// cap: cleanup is what lets those clients back in. rate.Inf never denies, so the
+// middleware never asks for it; it would get the 1-second floor.
+func retryAfterSeconds(r rate.Limit) int {
+	// NaN fails every comparison, so test for it explicitly.
 	if r <= 0 || math.IsNaN(float64(r)) {
 		return maxRetryAfterSeconds
 	}
 
-	// The refill interval in nanoseconds, as a float. Check it fits in a
-	// time.Duration before converting: an out-of-range float-to-int conversion
-	// is platform-defined in Go. float64(math.MaxInt64) rounds up to 2^63, so
-	// ">=" rejects exactly the values that do not fit.
+	// The refill interval in nanoseconds. Comparing against the cap before
+	// converting also keeps the float-to-Duration conversion in range: an
+	// out-of-range conversion is platform-defined in Go.
 	ns := float64(time.Second) / float64(r)
-	if ns >= float64(math.MaxInt64) {
+	if ns >= float64(time.Duration(maxRetryAfterSeconds)*time.Second) {
 		return maxRetryAfterSeconds
 	}
 	interval := time.Duration(ns) // truncates to whole nanoseconds
 
-	// Ceiling division: whole seconds, rounding any remainder up. The interval
-	// is at most MaxInt64, so add the remainder rather than (interval +
-	// time.Second - 1), which could overflow.
-	secs := int64(interval / time.Second)
+	// Ceiling division to whole seconds, with a floor of 1.
+	secs := int(interval / time.Second)
 	if interval%time.Second != 0 {
 		secs++
 	}
-	if secs < 1 {
-		secs = 1
-	}
-	return secs
+	return max(secs, 1)
 }
