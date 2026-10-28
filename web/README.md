@@ -6,7 +6,7 @@ Small, light-dependency helpers for HTTP services:
 |---|---|
 | `apierr` | Shared sentinel errors (`ErrNotFound`, `ErrConflict`, `ErrUserLimitReached`, `ErrTokenAlreadyRevoked`) for consistent error mapping. |
 | `httputil` | Proxy-aware HTTP helpers: `ExtractClientIP` (honours `TRUST_PROXY`) and `CheckOrigin`. |
-| `ratelimit` | Per-IP token-bucket rate-limiting middleware (`Limiter`), keyed by `httputil.ExtractClientIP`. |
+| `ratelimit` | Per-IP token-bucket rate-limiting middleware (`Limiter`), keyed by `httputil.ExtractClientIP`. Over-limit requests get a 429 with `Retry-After` set to the token refill interval in whole seconds, rounded up, never less than 1. |
 | `spec` | OpenAPI YAML→JSON `Converter`, used to serve `/openapi.json` from embedded YAML. |
 
 Moved here from `github.com/sweeney/identity/common` (`apierr`, `httputil`,

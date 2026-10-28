@@ -2,8 +2,9 @@ package ratelimit
 
 import (
 	"encoding/json"
-	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -134,14 +135,17 @@ func (l *Limiter) VisitorCount() int {
 }
 
 // Middleware returns an http.Handler that rate-limits by client IP.
+//
+// A request over the limit gets 429 Too Many Requests with a JSON error body
+// and a Retry-After header: the time for the bucket to refill one token, in
+// whole seconds rounded up, never less than 1. See retryAfterSeconds.
 func (l *Limiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := httputil.ExtractClientIP(r, l.trustProxy)
 		limiter := l.getVisitor(ip)
 
 		if !limiter.Allow() {
-			retryAfter := fmt.Sprintf("%.0f", 1.0/float64(l.rate))
-			w.Header().Set("Retry-After", retryAfter)
+			w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds(l.rate), 10))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
 			json.NewEncoder(w).Encode(map[string]string{
@@ -153,4 +157,66 @@ func (l *Limiter) Middleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// maxRetryAfterSeconds is the longest Retry-After the middleware sends: the
+// longest interval a time.Duration can hold, about 292 years. It is what a
+// limiter that never refills (rate 0) reports, and the cap for rates so slow
+// their refill interval would overflow time.Duration.
+const maxRetryAfterSeconds = int64(math.MaxInt64 / int64(time.Second))
+
+// retryAfterSeconds returns the Retry-After value, in whole seconds, that the
+// middleware sends with a 429 for a limiter refilling at rate r.
+//
+// Retry-After (RFC 9110 §10.2.3) is a whole number of seconds telling the
+// client how long to wait. A denied request has found its bucket empty, and the
+// bucket gains one token every 1/r seconds, so that is the shortest useful
+// wait. The result is 1/r rounded UP, and never less than 1:
+//
+//   - Rounding to nearest, as this used to do with fmt.Sprintf("%.0f", 1/r),
+//     sends "0" for every r >= 2 req/s, telling clients to retry at once into
+//     another 429 (sweeney/common#1). It also under-reports intervals such as
+//     2.5s as "2".
+//   - A value of 0 is never sent: any interval under a second still means
+//     "not yet", and 1 is the shortest wait the header can express.
+//
+// The interval is first truncated to whole nanoseconds, then rounded up to
+// whole seconds in integer arithmetic. Doing the rounding on 1/r as a float
+// would be wrong: rate.Every(49*time.Second) stores 1/49, and 1/(1/49) is
+// 49.00000000000001 in float64, which math.Ceil turns into 50. Truncating to a
+// nanosecond first discards that rounding noise. It could only under-report if
+// the true interval were a whole number of seconds plus less than a
+// nanosecond, which no real limiter configuration is.
+//
+// Rates that are zero, negative or NaN never refill (rate.Limiter treats r <= 0
+// as "no new tokens"), so they get maxRetryAfterSeconds, as do positive rates
+// so small the interval overflows time.Duration. rate.Inf never denies, so the
+// middleware does not call this for it; it would get the 1-second floor.
+func retryAfterSeconds(r rate.Limit) int64 {
+	// NaN fails every comparison, so test for it explicitly alongside r <= 0.
+	if r <= 0 || math.IsNaN(float64(r)) {
+		return maxRetryAfterSeconds
+	}
+
+	// The refill interval in nanoseconds, as a float. Check it fits in a
+	// time.Duration before converting: an out-of-range float-to-int conversion
+	// is platform-defined in Go. float64(math.MaxInt64) rounds up to 2^63, so
+	// ">=" rejects exactly the values that do not fit.
+	ns := float64(time.Second) / float64(r)
+	if ns >= float64(math.MaxInt64) {
+		return maxRetryAfterSeconds
+	}
+	interval := time.Duration(ns) // truncates to whole nanoseconds
+
+	// Ceiling division: whole seconds, rounding any remainder up. The interval
+	// is at most MaxInt64, so add the remainder rather than (interval +
+	// time.Second - 1), which could overflow.
+	secs := int64(interval / time.Second)
+	if interval%time.Second != 0 {
+		secs++
+	}
+	if secs < 1 {
+		secs = 1
+	}
+	return secs
 }
