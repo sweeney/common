@@ -15,9 +15,12 @@ tests clean (`logic` and `status` at 100% coverage) and cross-compiles for
 `linux/arm`. A wire-contract self-test pins the legacy boiler bytes (2-channel
 boiler-shaped profile) plus a 1-channel doorbell smoke test.
 
-**Consumers:** `boiler-sensor` is the one live consumer. `doorbell-sensor` was
-built against it to validate the API and is green, but it is parked
-(deprioritised, 2026-10-25) and not published. The doorbell smoke test in this
+**Consumers:** `boiler-sensor` is the one live consumer, shipped on
+`iot/v0.1.0`. A golden test in that repo drives `iot.Run` with the boiler
+profile and pins every payload to what the pre-extraction build published, and
+its deploy verifies `/healthz` and the broker heartbeat and rolls back on
+failure. `doorbell-sensor` was built against it to validate the API and is
+green, but it is parked (deprioritised, 2026-10-25) and not published. The doorbell smoke test in this
 module keeps the engine tested as generic in CI without it.
 
 **Scope, as re-planned 2026-10-25:** `iot` is for edge-triggered on/off
@@ -128,7 +131,7 @@ greenhouse (warn-only first).
 3. Migrate `boiler-sensor` onto `common/iot`; golden bytes unchanged. ✅ done
 4. Build `doorbell-sensor` (own repo) against `common/iot`. ✅ done, then parked
 5. Validate consumers green, tag `iot/v0.1.0` and pin it. ✅ done
-6. Publish this repo and the tag; ship boiler-sensor on the tag. ⏳ in progress
+6. Publish this repo and the tag; ship boiler-sensor on the tag. ✅ done
 7. Move `db`, `backup`, `web` (with `spec`) here from `identity/common`, then
    migrate identity, config, countinghouse, greenhouse, statehouse and
    mqttproxy. ✅ done
