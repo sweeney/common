@@ -53,7 +53,9 @@ work.
    `DeviceConfig` mirror of the `devices_<site>` namespace ("mirrors
    statehouse", "copied from statehouse"). Three real consumers make this the
    strongest candidate. It takes a token-source interface, as countinghouse's
-   copy already does, so it does not depend on `identity`.
+   copy already does, so it does not depend on `identity`. pi-price-screen's
+   `rulesconfig` is a fourth copy. **Design drafted, not built:** see
+   [remoteconfig-DESIGN.md](remoteconfig-DESIGN.md).
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
    `retry` packages and similar publishers (capped backoff, retained state,
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
