@@ -127,8 +127,9 @@ type Client struct {
 	HTTPClient *http.Client
 }
 
-// ValidName reports whether ns is a name config accepts, returning an error
-// that wraps ErrInvalidName if not. It is the check Get makes before each
+// ValidName reports whether ns is a name config accepts: 1 to 64 of
+// lowercase letters, digits, '_' and '-'. The empty name is invalid. If ns is
+// not valid it returns an error wrapping ErrInvalidName. It is the check Get makes before each
 // request, exported so a service can refuse a bad name when it loads its own
 // configuration rather than finding out on the first fetch.
 func ValidName(ns string) error {
