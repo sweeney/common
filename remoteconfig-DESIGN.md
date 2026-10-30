@@ -78,9 +78,11 @@ go.
    - greenhouse boots on an empty snapshot and serves confident zeros.
    - statehouse falls back to its local YAML, which is a real fallback.
 
-   **countinghouse's latch moves into common** as an opt-in query. Whether
-   greenhouse should adopt the refusal is a separate behaviour change; see
-   open questions.
+   **countinghouse's latch moves into common** as an opt-in query.
+   greenhouse adopts the refusal (decided 2026-10-30), for its devices
+   namespace only. The floorplan stays optional, because it is presentation
+   detail that must never stop a climate service. This is a behaviour change,
+   so it is its own PR after greenhouse's move (see migration order).
 7. **Request hygiene.** Only pi-price-screen escapes the namespace
    (`url.PathEscape`), trims a trailing slash from the base URL, and sends
    `Accept` and `User-Agent`. **Adopt all four.** The `User-Agent` is
@@ -292,6 +294,10 @@ the next starts.
 1. **config:** add the contract test (test-only dependency; no deploy needed).
 2. **greenhouse:** the simplest snapshot consumer. Its floorplan and `Covers`
    fixes wait for phase 2.
+   - **greenhouse, cold-boot refusal:** a separate PR, after the move has
+     deployed. main.go refuses to start when `Tracker.Cold` names the devices
+     namespace and a base URL is configured. An empty base URL stays the
+     local-dev opt-out, as in countinghouse. SIGHUP never refuses.
 3. **statehouse:** `ApplyRemote` keeps its merges; `fetch` and
    `recordStatus` go.
 4. **countinghouse:** `landed`/`Cold` become `Tracker`; `sites` resolution
@@ -311,6 +317,5 @@ Before each PR, check that no test or client matches on the old error strings.
 
 ## Open questions for the user
 
-1. Should greenhouse refuse to boot on a cold devices namespace, as
-   countinghouse does? Today it serves empty answers. This is a separate
-   behaviour change, not part of the move.
+None. The name (`remoteconfig`), phase 2 (do it, after phase 1) and
+greenhouse's cold-boot refusal (devices only) were settled on 2026-10-30.
