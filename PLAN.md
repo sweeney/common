@@ -64,8 +64,8 @@ work.
    |---|---|
    | greenhouse | ✅ sweeney/greenhouse#40, merged c9c1b28; running 60ad394 since 2026-10-30 12:22 (rollback 300d373) |
    | countinghouse | ✅ sweeney/countinghouse#60, merged 76d6de6; running 6bb0aad since 2026-10-30 14:29 (rollback 20904de) |
-   | statehouse | next |
-   | pi-price-screen | after statehouse |
+   | statehouse | ✅ sweeney/statehouse#77, merged 7dfdfa3; running a00440e (v0.2.0) since 2026-10-30 14:39 (rollback 00bca8b) |
+   | pi-price-screen | sweeney/pi-price-screen#1 (2224551, v0.2.0), reviewed; deploy to both screens waits on the user |
 
    greenhouse's cold-boot refusal follows its port as its own PR. greenhouse
    and countinghouse each carry a copy of the name regex until a follow-up
