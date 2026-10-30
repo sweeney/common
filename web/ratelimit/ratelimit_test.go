@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/sweeney/common/web/ratelimit"
+	"golang.org/x/time/rate"
 )
 
 func okHandler() http.Handler {
@@ -89,25 +91,62 @@ func TestDifferentIPsHaveIndependentLimits(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w2.Code)
 }
 
-func TestRetryAfterHeaderIsSet(t *testing.T) {
-	// Rate is 0.5 req/s → Retry-After should be 2
-	limiter := ratelimit.NewLimiter(0.5, 1, "")
-	handler := limiter.Middleware(okHandler())
+// TestRetryAfterHeader checks the Retry-After header sent with a 429. It must
+// be the token refill interval rounded up to whole seconds and never 0: a
+// shorter value sends obedient clients straight into another 429. The 2/s, 5/s
+// and 1-per-12s rows are the limiters identity and config run in production.
+func TestRetryAfterHeader(t *testing.T) {
+	tests := []struct {
+		name string
+		rate float64
+		want string
+	}{
+		// Sub-second refill intervals.
+		{name: "identity general limiter, 2/s (1/rate = 0.5s)", rate: 2, want: "1"},
+		{name: "config API limiter, 5/s (1/rate = 0.2s)", rate: 5, want: "1"},
+		{name: "fast limiter, 100/s (1/rate = 0.01s)", rate: 100, want: "1"},
 
-	// Exhaust burst
+		// Exactly one second: the boundary between the two regimes.
+		{name: "1/s (1/rate = 1s)", rate: 1, want: "1"},
+
+		// Fractional intervals round up, not to nearest.
+		{name: "0.4/s (1/rate = 2.5s)", rate: 0.4, want: "3"},
+		{name: "0.3/s (1/rate = 3.33s)", rate: 0.3, want: "4"},
+
+		// Whole-second intervals are reported exactly.
+		{name: "0.5/s (1/rate = 2s)", rate: 0.5, want: "2"},
+		{name: "identity auth limiter, 1 per 12s", rate: float64(rate.Every(12 * time.Second)), want: "12"},
+
+		// Limiters slower than visitor cleanup are capped at the cleanup
+		// horizon: 3 min idle + 1 min tick + 1 s margin. See retryafter_test.go.
+		{name: "zero rate, reset by cleanup", rate: 0, want: "241"},
+		{name: "1 per day, reset by cleanup", rate: float64(rate.Every(24 * time.Hour)), want: "241"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Burst 1: the first request takes the only token, the second is denied.
+			limiter := ratelimit.NewLimiter(tt.rate, 1, "")
+			handler := limiter.Middleware(okHandler())
+
+			w := serve(handler, "10.0.0.1:12345")
+			require.Equal(t, http.StatusOK, w.Code, "first request should use the burst token")
+
+			w = serve(handler, "10.0.0.1:12345")
+			require.Equal(t, http.StatusTooManyRequests, w.Code, "second request should be rate limited")
+			assert.Equal(t, tt.want, w.Header().Get("Retry-After"))
+		})
+	}
+}
+
+// serve sends one GET through handler as if from remoteAddr and returns the
+// recorded response.
+func serve(handler http.Handler, remoteAddr string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.RemoteAddr = "10.0.0.1:12345"
+	req.RemoteAddr = remoteAddr
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	// Next request gets 429 with Retry-After
-	req = httptest.NewRequest(http.MethodGet, "/", nil)
-	req.RemoteAddr = "10.0.0.1:12345"
-	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusTooManyRequests, w.Code)
-	assert.Equal(t, "2", w.Header().Get("Retry-After"))
+	return w
 }
 
 func TestMiddleware_IgnoresCFConnectingIP_WhenTrustProxyEmpty(t *testing.T) {
