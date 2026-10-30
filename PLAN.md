@@ -62,14 +62,14 @@ work.
 
    | Consumer | Status |
    |---|---|
-   | greenhouse | ✅ sweeney/greenhouse#40, merged c9c1b28; running 60ad394 since 2026-10-30 12:22 (rollback 300d373) |
-   | countinghouse | ✅ sweeney/countinghouse#60, merged 76d6de6; running 6bb0aad since 2026-10-30 14:29 (rollback 20904de) |
+   | greenhouse | ✅ sweeney/greenhouse#40 (c9c1b28), then #41 for v0.2.0 + `ValidName` (30ed207); running d5ecb46 since 2026-10-30 15:01 (rollback 60ad394) |
+   | countinghouse | ✅ sweeney/countinghouse#60 (76d6de6), then #61 for v0.2.0 + `ValidName` (f29cbf2); running 6a82141 since 2026-10-30 15:02 (rollback 6bb0aad) |
    | statehouse | ✅ sweeney/statehouse#77, merged 7dfdfa3; running a00440e (v0.2.0) since 2026-10-30 14:39 (rollback 00bca8b) |
-   | pi-price-screen | sweeney/pi-price-screen#1 (2224551, v0.2.0), reviewed; deploy to both screens waits on the user |
+   | pi-price-screen | ✅ sweeney/pi-price-screen#1, merged a92b49a; running 2224551 on both screens since 2026-10-30 15:02, rules read from config |
 
-   greenhouse's cold-boot refusal follows its port as its own PR. greenhouse
-   and countinghouse each carry a copy of the name regex until a follow-up
-   moves them to `remoteconfig.ValidName`. Phase 2
+   **Phase 1 is complete:** every consumer is on v0.2.0, and none keeps its
+   own transport or a copy of the name rule. greenhouse's cold-boot refusal
+   follows as its own PR. Phase 2
    (sharing the `devices_<site>` schema) waits until every phase-1 consumer
    has shipped, and gets its own design first.
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
