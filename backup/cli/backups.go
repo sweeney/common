@@ -79,8 +79,16 @@ func ListBackups(cfg BackupConfig) error {
 		)
 	}
 	fmt.Printf("\n%d backup(s) found.\n", len(filtered))
-	fmt.Printf("\nTo restore: ./identity-server %s --restore-backup <key>\n", cfg.ServiceName)
+	fmt.Printf("\n%s\n", restoreHint(os.Args[0]))
 	return nil
+}
+
+// restoreHint is the closing line of ListBackups: how to restore one of the
+// keys listed. It names the binary as invoked, since each service has its own
+// and it may not be on PATH, and says to stop the service first: restoring
+// under a running one corrupts its WAL.
+func restoreHint(argv0 string) string {
+	return "To restore (stop the service first): " + argv0 + " --restore-backup <key>"
 }
 
 // RestoreBackup downloads an R2 backup to the local DB file.
