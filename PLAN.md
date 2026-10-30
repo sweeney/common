@@ -133,11 +133,16 @@ Follow-ups found along the way:
   (sweeney/common#1): fixed in `web/v0.2.1` (sweeney/common#2). identity
   (sweeney/identity#51, eeb4e93) and config (sweeney/config#8, 0ab6e31) are on
   it and deployed; their 2/s and 5/s limiters now send `1`.
+- `backup/cli`'s restore hint named `./identity-server config`, from when
+  config ran inside it: fixed in `backup/v0.1.1` (sweeney/common#5), which
+  names the binary as invoked and says to stop the service first. Consumers
+  pick it up on their next bump.
 - Audience enforcement for countinghouse and greenhouse, warn-only first:
   sweeney/countinghouse#59, sweeney/greenhouse#39. Step 1, the check in warn
   mode (`http.audience_check`, warn by default), is merged in countinghouse
-  (#62, 7eb3d42; running 8345603 since 2026-10-30 15:21) and reviewed for
-  greenhouse (#43). Next: read the warnings for about a week, then make
+  (#62, 7eb3d42; running 8345603 since 2026-10-30 15:21) and in greenhouse
+  (#43, b6f3589; running 7827b97 since 15:25, rollback c6b943f; its 401s are
+  now JSON, as its spec says). Next: read the warnings for about a week, then make
   `enforce` the default.
 
 **Order of work** (each step ends green):
