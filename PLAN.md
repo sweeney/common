@@ -134,7 +134,11 @@ Follow-ups found along the way:
   (sweeney/identity#51, eeb4e93) and config (sweeney/config#8, 0ab6e31) are on
   it and deployed; their 2/s and 5/s limiters now send `1`.
 - Audience enforcement for countinghouse and greenhouse, warn-only first:
-  sweeney/countinghouse#59, sweeney/greenhouse#39.
+  sweeney/countinghouse#59, sweeney/greenhouse#39. Step 1, the check in warn
+  mode (`http.audience_check`, warn by default), is merged in countinghouse
+  (#62, 7eb3d42; running 8345603 since 2026-10-30 15:21) and reviewed for
+  greenhouse (#43). Next: read the warnings for about a week, then make
+  `enforce` the default.
 
 **Order of work** (each step ends green):
 
