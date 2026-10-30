@@ -538,3 +538,23 @@ type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errBrokenBody }
 func (errReader) Close() error             { return nil }
+
+func TestValidName(t *testing.T) {
+	for _, ns := range []string{"sites", "devices_home", "floorplan-home", "a", strings.Repeat("a", 64)} {
+		if err := ValidName(ns); err != nil {
+			t.Errorf("ValidName(%q) = %v, want nil", ns, err)
+		}
+	}
+	for _, ns := range []string{"", "Sites", "Devices.Home", "a/b", "..", strings.Repeat("a", 65)} {
+		err := ValidName(ns)
+		if !errors.Is(err, ErrInvalidName) {
+			t.Errorf("ValidName(%q) = %v, want ErrInvalidName", ns, err)
+		}
+		// The same answer Get gives, so a caller checking at boot and Get
+		// checking per request can never disagree.
+		c := &Client{BaseURL: "http://unused.invalid"}
+		if gerr := c.Get(context.Background(), ns, &map[string]any{}); err == nil || gerr == nil || gerr.Error() != err.Error() {
+			t.Errorf("ValidName(%q) = %v but Get = %v; want the same error", ns, err, gerr)
+		}
+	}
+}

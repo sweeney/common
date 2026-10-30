@@ -127,6 +127,17 @@ type Client struct {
 	HTTPClient *http.Client
 }
 
+// ValidName reports whether ns is a name config accepts, returning an error
+// that wraps ErrInvalidName if not. It is the check Get makes before each
+// request, exported so a service can refuse a bad name when it loads its own
+// configuration rather than finding out on the first fetch.
+func ValidName(ns string) error {
+	if !nameRE.MatchString(ns) {
+		return fmt.Errorf("remoteconfig: namespace %q: %w", ns, ErrInvalidName)
+	}
+	return nil
+}
+
 // Get fetches namespace ns and decodes it into dst with encoding/json, which
 // ignores keys dst does not declare.
 //
@@ -137,8 +148,8 @@ func (c *Client) Get(ctx context.Context, ns string, dst any) error {
 	if c.BaseURL == "" {
 		return fmt.Errorf("remoteconfig: namespace %q: %w", ns, ErrNotConfigured)
 	}
-	if !nameRE.MatchString(ns) {
-		return fmt.Errorf("remoteconfig: namespace %q: %w", ns, ErrInvalidName)
+	if err := ValidName(ns); err != nil {
+		return err
 	}
 
 	body, err := c.do(ctx, ns)

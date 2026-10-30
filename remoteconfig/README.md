@@ -8,6 +8,7 @@ satisfies, so it does not depend on identity.
 | Type | What it does |
 |---|---|
 | `Client` | `Get(ctx, ns, dst)`: one authenticated GET of `/api/v1/config/{ns}`, decoded into `dst`. It validates the name locally, retries a 401 once with a fresh token, and refuses a body that is not a JSON object or is over 1 MiB. An empty `BaseURL` is local mode (`ErrNotConfigured`, nothing requested); a nil `Tokens` sends anonymous requests, which can read only public namespaces. |
+| `ValidName` | `ValidName(ns)`: the name check `Get` makes, for a service to run when it loads its own configuration. Wraps `ErrInvalidName`. |
 | `StatusError` | A non-200 answer: namespace, code, `Retry-After`, config's error message, and the sentinel it maps to. |
 | `Tracker` | `Record(ns, err)`, `Statuses()`, `Cold(namespaces...)`. A success latches the namespace as landed for good, so a later failure is stale, not cold. Its `Status` JSON is the `{"ok","fetched_at","error"}` every consumer already serves. |
 
