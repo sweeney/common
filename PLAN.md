@@ -108,9 +108,14 @@ identity's deploy also brought its own ledger adoption (sweeney/identity#47),
 which was rehearsed against a snapshot of production first (sweeney/identity#50).
 greenhouse, statehouse and mqttproxy no longer pull in the AWS SDK or sqlite.
 
-Follow-ups found along the way: `Retry-After: 0` from `web/ratelimit` at rates
-of 2/s and above (sweeney/common#1); audience enforcement for countinghouse and
-greenhouse (warn-only first).
+Follow-ups found along the way:
+
+- `Retry-After: 0` from `web/ratelimit` at rates of 2/s and above
+  (sweeney/common#1): fixed in `web/v0.2.1` (sweeney/common#2). identity
+  (sweeney/identity#51, eeb4e93) and config (sweeney/config#8, 0ab6e31) are on
+  it and deployed; their 2/s and 5/s limiters now send `1`.
+- Audience enforcement for countinghouse and greenhouse, warn-only first:
+  sweeney/countinghouse#59, sweeney/greenhouse#39.
 
 **Order of work** (each step ends green):
 
