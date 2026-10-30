@@ -79,8 +79,14 @@ func ListBackups(cfg BackupConfig) error {
 		)
 	}
 	fmt.Printf("\n%d backup(s) found.\n", len(filtered))
-	fmt.Printf("\nTo restore: ./identity-server %s --restore-backup <key>\n", cfg.ServiceName)
+	fmt.Printf("\n%s\n", restoreHint(os.Args[0]))
 	return nil
+}
+
+// restoreHint is the closing line of ListBackups: how to restore one of the
+// keys listed, with the binary that is running, since each service has its own.
+func restoreHint(argv0 string) string {
+	return "To restore: " + path.Base(argv0) + " --restore-backup <key>"
 }
 
 // RestoreBackup downloads an R2 backup to the local DB file.
