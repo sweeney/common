@@ -237,6 +237,28 @@ swap(doc)
 `Get` also refuses a body that is not a JSON object, so `null` can never count
 as a successful fetch. config cannot store one, so this is defence only.
 
+### As built (2026-10-30)
+
+The sketch above survived both proof ports (countinghouse and greenhouse)
+unchanged in shape. Building it settled these details:
+
+- **`UserAgent` defaults** to `DefaultUserAgent` rather than being an error. A
+  forgotten one should not stop a service reading its config. Both ports set
+  `"<service>/" + version`.
+- **A nil `Tokens` sends anonymous requests**, which can read only
+  `read_role: public` namespaces. For such a client a 401 is not retried.
+- **Two more sentinels.** `ErrUnexpectedStatus` covers any other non-200, and
+  `ErrInvalidDocument` covers a 200 whose body is not an object, does not
+  decode, or is over 1 MiB.
+- **`StatusError` also carries `Message`** (config's JSON error message,
+  e.g. "unrecognised role in token") and `Err`, the sentinel it unwraps to.
+- **No logging.** The "base_url is not https" warning stays with each
+  consumer, which owns the logger and knows whether it is in local mode.
+- **Ports keep their public surface.** `TokenSource` and `NamespaceStatus`
+  become type aliases, so `httpapi` and `main.go` do not change beyond
+  setting `UserAgent`. Each `Fetcher` builds a `Client` per fetch from its
+  exported fields, which existing tests mutate between refreshes.
+
 ## Test plan
 
 In `remoteconfig` (an `httptest` server, run with `-race`, aiming at 100%

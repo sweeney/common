@@ -1,0 +1,56 @@
+name: remoteconfig
+
+on:
+  push:
+    branches: [main]
+    paths: ['remoteconfig/**', '.github/workflows/remoteconfig.yml']
+  pull_request:
+    branches: [main]
+    paths: ['remoteconfig/**', '.github/workflows/remoteconfig.yml']
+
+defaults:
+  run:
+    working-directory: remoteconfig
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: remoteconfig/go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: remoteconfig/go.mod
+
+      # Consumers run on 64-bit Linux hosts and Pis, pi-price-screen down to a
+      # Pi Zero, so the module must cross-compile there even though the tests
+      # run on amd64.
+      - name: Cross-compile for linux/arm64
+        env:
+          GOOS: linux
+          GOARCH: arm64
+        run: go build ./...
+
+      - name: Cross-compile for linux/arm (Pi Zero)
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: '6'
+        run: go build ./...
