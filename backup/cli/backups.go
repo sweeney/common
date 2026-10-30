@@ -84,9 +84,11 @@ func ListBackups(cfg BackupConfig) error {
 }
 
 // restoreHint is the closing line of ListBackups: how to restore one of the
-// keys listed, with the binary that is running, since each service has its own.
+// keys listed. It names the binary as invoked, since each service has its own
+// and it may not be on PATH, and says to stop the service first: restoring
+// under a running one corrupts its WAL.
 func restoreHint(argv0 string) string {
-	return "To restore: " + path.Base(argv0) + " --restore-backup <key>"
+	return "To restore (stop the service first): " + argv0 + " --restore-backup <key>"
 }
 
 // RestoreBackup downloads an R2 backup to the local DB file.
