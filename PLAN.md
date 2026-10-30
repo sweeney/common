@@ -143,7 +143,12 @@ Follow-ups found along the way:
   (#62, 7eb3d42; running 8345603 since 2026-10-30 15:21) and in greenhouse
   (#43, b6f3589; running 7827b97 since 15:25, rollback c6b943f; its 401s are
   now JSON, as its spec says). Next: read the warnings for about a week, then make
-  `enforce` the default.
+  `enforce` the default. No warnings by 2026-10-30 evening.
+- config's R2 backups after the move to `backup`: checked on 2026-10-30 with
+  sweeney/config's `deploy/check-backups.sh` (sweeney/config#9, 120b4bd). 5 ok
+  and 0 failures: one backup on each UTC day since 2026-10-28, newest
+  2026-10-30T00:00:00Z, all under `production/backups/config/`, and no
+  `backup_failure` in the journal.
 
 **Order of work** (each step ends green):
 
