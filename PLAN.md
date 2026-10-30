@@ -69,7 +69,10 @@ work.
 
    **Phase 1 is complete:** every consumer is on v0.2.0, and none keeps its
    own transport or a copy of the name rule. greenhouse's cold-boot refusal
-   follows as its own PR. Phase 2
+   followed as sweeney/greenhouse#42 (merged 2abfe43; running c6b943f since
+   2026-10-30 15:07, rollback d5ecb46): a devices namespace that never landed
+   now stops startup, as in countinghouse, and systemd's restart (every 5s)
+   recovers once config answers. Phase 2
    (sharing the `devices_<site>` schema) waits until every phase-1 consumer
    has shipped, and gets its own design first.
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
