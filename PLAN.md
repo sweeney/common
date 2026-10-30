@@ -55,18 +55,21 @@ work.
    strongest candidate. It takes a token-source interface, as countinghouse's
    copy already does, so it does not depend on `identity`. pi-price-screen's
    `rulesconfig` is a fourth copy. **Phase 1 landed as `remoteconfig/v0.1.0`**
-   (sweeney/common#3, 3bd16f3); see
+   (sweeney/common#3, 3bd16f3); `v0.2.0` adds `ValidName` (sweeney/common#4),
+   so services stop copying the name rule; see
    [remoteconfig-DESIGN.md](remoteconfig-DESIGN.md). Consumers, one at a
    time, each deployed and verified before the next:
 
    | Consumer | Status |
    |---|---|
-   | greenhouse | ported (35409cd), not yet pushed |
-   | countinghouse | ported (1127f28), not yet pushed |
-   | statehouse | after those two are deployed |
+   | greenhouse | ✅ sweeney/greenhouse#40, merged c9c1b28; running 60ad394 since 2026-10-30 12:22 (rollback 300d373) |
+   | countinghouse | ✅ sweeney/countinghouse#60, merged 76d6de6; running 6bb0aad since 2026-10-30 14:29 (rollback 20904de) |
+   | statehouse | next |
    | pi-price-screen | after statehouse |
 
-   greenhouse's cold-boot refusal follows its port as its own PR. Phase 2
+   greenhouse's cold-boot refusal follows its port as its own PR. greenhouse
+   and countinghouse each carry a copy of the name regex until a follow-up
+   moves them to `remoteconfig.ValidName`. Phase 2
    (sharing the `devices_<site>` schema) waits until every phase-1 consumer
    has shipped, and gets its own design first.
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical

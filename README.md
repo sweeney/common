@@ -18,7 +18,7 @@ only pulls the dependencies of the module it actually imports.
 | `db` | `github.com/sweeney/common/db` | **landed — `db/v0.1.0`** (from identity/common) | modernc sqlite |
 | `backup` | `github.com/sweeney/common/backup` | **landed — `backup/v0.1.0`** (from identity/common) | AWS SDK (R2/S3), sqlite |
 | `web` | `github.com/sweeney/common/web` | **landed — `web/v0.2.1`** (from identity/common) | `x/time`, `yaml.v3` |
-| `remoteconfig` | `github.com/sweeney/common/remoteconfig` | **landed — `remoteconfig/v0.1.0`** (config.swee.net client; replaces the copies in statehouse, countinghouse, greenhouse, pi-price-screen) | stdlib only |
+| `remoteconfig` | `github.com/sweeney/common/remoteconfig` | **landed — `remoteconfig/v0.2.0`** (config.swee.net client; replaces the copies in statehouse, countinghouse, greenhouse, pi-price-screen) | stdlib only |
 
 `auth` stays in `github.com/sweeney/identity/common`, identity's own client library.
 
