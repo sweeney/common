@@ -54,8 +54,21 @@ work.
    statehouse", "copied from statehouse"). Three real consumers make this the
    strongest candidate. It takes a token-source interface, as countinghouse's
    copy already does, so it does not depend on `identity`. pi-price-screen's
-   `rulesconfig` is a fourth copy. **Design drafted, not built:** see
-   [remoteconfig-DESIGN.md](remoteconfig-DESIGN.md).
+   `rulesconfig` is a fourth copy. **Phase 1 landed as `remoteconfig/v0.1.0`**
+   (sweeney/common#3, 3bd16f3); see
+   [remoteconfig-DESIGN.md](remoteconfig-DESIGN.md). Consumers, one at a
+   time, each deployed and verified before the next:
+
+   | Consumer | Status |
+   |---|---|
+   | greenhouse | ported (35409cd), not yet pushed |
+   | countinghouse | ported (1127f28), not yet pushed |
+   | statehouse | after those two are deployed |
+   | pi-price-screen | after statehouse |
+
+   greenhouse's cold-boot refusal follows its port as its own PR. Phase 2
+   (sharing the `devices_<site>` schema) waits until every phase-1 consumer
+   has shipped, and gets its own design first.
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
    `retry` packages and similar publishers (capped backoff, retained state,
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
