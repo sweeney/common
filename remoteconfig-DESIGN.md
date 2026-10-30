@@ -125,7 +125,7 @@ share line for line:
   collection). This is about 10 lines each, and the shapes differ: floors
   and rooms swap together. A generic holder would save little.
 
-**Deferred (phase 2, a decision for later):** shared schema for the
+**Phase 2 (decided 2026-10-30: do it, after phase 1 ships):** shared schema for the
 `devices_<site>` and `floorplan_<site>` namespaces. The core device record:
 
 - `Scheme`/`Primary`/`Display`;
@@ -140,8 +140,16 @@ Consumers would embed the core and add their own fields. But the device record
 is **statehouse's schema**, which it also loads from local YAML with its own
 `Thresholds`. Putting it in common makes every schema change a common release.
 The plan's rule says to extract what consumers show; they show the core but
-not the owner's view of it. So land phase 1, then decide. Fix the floorplan
-divergence in greenhouse now regardless; it is a bug either way.
+not the owner's view of it.
+
+The user's decision is to move both into common, and to fix the drift as part
+of that move: greenhouse gains `Covers`/`CoversWholeSite`, and the floorplan
+decoder takes countinghouse's strict behaviour (item 8). All of this waits
+until every phase 1 consumer has shipped, so the transport change and the
+schema change never land in one PR. The cost is accepted: a device-schema
+change becomes a common release and a statehouse bump. Phase 2 gets its own
+design (packages, embedding, statehouse's YAML and `Thresholds`) before any
+code.
 
 ## Module
 
@@ -282,8 +290,8 @@ the next starts.
    committed. Adjust the API, then tag `remoteconfig/v0.1.0`. This is the
    `iot` precedent: no tag until a real consumer has been built on it.
 1. **config:** add the contract test (test-only dependency; no deploy needed).
-2. **greenhouse:** the simplest snapshot consumer. Also fix the floorplan
-   decoder (item 8).
+2. **greenhouse:** the simplest snapshot consumer. Its floorplan and `Covers`
+   fixes wait for phase 2.
 3. **statehouse:** `ApplyRemote` keeps its merges; `fetch` and
    `recordStatus` go.
 4. **countinghouse:** `landed`/`Cold` become `Tracker`; `sites` resolution
@@ -306,6 +314,3 @@ Before each PR, check that no test or client matches on the old error strings.
 1. Should greenhouse refuse to boot on a cold devices namespace, as
    countinghouse does? Today it serves empty answers. This is a separate
    behaviour change, not part of the move.
-2. Phase 2: should the shared device/floorplan schema be pursued after
-   phase 1, or should statehouse stay the sole owner with the others
-   mirroring?
