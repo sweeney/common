@@ -176,8 +176,12 @@ const retryAfterMargin = time.Second
 // idle client can wait before cleanup drops its visitor and resets its bucket
 // (the idle timeout, plus up to one tick for cleanup to notice, plus the
 // margin). That is 241 seconds. Waiting any longer than this gains nothing,
-// whatever the rate. A small cap also keeps the value safe for clients that
-// overflow on large delays (e.g. JavaScript setTimeout beyond about 24.8 days).
+// whatever the rate, provided the key really goes idle: any request from the
+// same key, even a denied one, refreshes lastSeen. So other clients behind the
+// same IP, or the same client on other routes, can stretch the real wait for a
+// limiter slower than the cap to the full 1/r. A small cap also keeps the value
+// safe for clients that overflow on large delays (e.g. JavaScript setTimeout
+// beyond about 24.8 days).
 const maxRetryAfterSeconds = int((visitorIdleTimeout + cleanupInterval + retryAfterMargin) / time.Second)
 
 // retryAfterSeconds returns the Retry-After value, in whole seconds, sent with
