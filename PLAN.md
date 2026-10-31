@@ -80,8 +80,8 @@ work.
    |---|---|
    | (module) | ✅ sweeney/common#7, merged 9b6b7c5, tagged `devices/v0.1.0`; decodes both live sites' documents with no problems |
    | statehouse | sweeney/statehouse#78, running 1c4791d since 2026-10-31 12:06 (rollback a00440e); `/config/devices` identical before and after; merge pending |
-   | countinghouse | next |
-   | greenhouse | after countinghouse |
+   | countinghouse | sweeney/countinghouse#63 (also `backup/v0.1.1`), running fe0c82d since 2026-10-31 12:17 (rollback 8345603); devices, rooms, floors, series and bill identical before and after; merge pending |
+   | greenhouse | next |
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
    `retry` packages and similar publishers (capped backoff, retained state,
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
@@ -145,7 +145,8 @@ Follow-ups found along the way:
   names the binary as invoked and says to stop the service first. config is
   on it (sweeney/config#10, 859906d; running 06ccbb7), with
   `deploy/restore-backup.sh` for restores (sweeney/config#11, 13f6cbd).
-  identity and countinghouse pick it up on their next bump.
+  countinghouse is on it via sweeney/countinghouse#63; identity's bump is
+  with config-01.
 - Audience enforcement for countinghouse and greenhouse, warn-only first:
   sweeney/countinghouse#59, sweeney/greenhouse#39. Step 1, the check in warn
   mode (`http.audience_check`, warn by default), is merged in countinghouse
