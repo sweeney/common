@@ -210,6 +210,12 @@ func (p *MQTTPublisher) connectOnce(ctx context.Context) error {
 // the connection was down failed and was not queued.
 func (p *MQTTPublisher) Reconnected() <-chan struct{} { return p.reconnected }
 
+// Connected reports whether the connection to the broker is open now, the
+// same test Publish makes before sending: paho's IsConnectionOpen, not
+// IsConnected (see MQTTPublisher).  It is meant for a health check; a
+// publish can still fail on a connection that looks open but is stalled.
+func (p *MQTTPublisher) Connected() bool { return p.client.IsConnectionOpen() }
+
 // Watch subscribes to topic on this connection, now if it is open and again
 // on every reconnect, so a retained message is delivered each time. onLost
 // runs when the connection drops, since changes made while it is down are
