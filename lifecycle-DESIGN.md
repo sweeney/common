@@ -29,14 +29,24 @@ dependencies.
 ## Consumers and tags
 
 1. tanktemp, first, through a gitignored `go.work`.
-2. **`iot` rebuilt on it (`iot/v0.2.0`), not done yet.** The open design
-   point is heartbeat timing. Today the heartbeat schedule, and the uptime
-   and counts in its log line, come from `logic.Detector.CheckHeartbeat`,
-   which runs on poll ticks. Either `iot` drives heartbeats from its detector
-   through an injected `HeartbeatTick`, or `lifecycle` owns the schedule. In
-   both cases `iot`'s `runner_test.go` and `wire_contract_test.go`, and
-   boiler-sensor's `lifecycle_golden_test.go`, must pass unchanged. Settle it
-   with those tests, not by argument.
+2. **`iot` rebuilt on it (`iot/v0.2.0`): not done. Tried against `iot`'s tests
+   on 2026-10-31, and two incompatibilities are now known:**
+   - **Skipped ticks.** `iot`'s `runScenario` sends ticks back to back on an
+     unbuffered channel and expects each to run one poll. With the work in
+     its own goroutine, a tick that arrives while the previous poll is still
+     finishing is skipped, so the scenarios would see fewer polls.
+   - **The fake clock.** `iot`'s `fakeClock` advances 100 ms per call and
+     isn't synchronised, because only the runtime goroutine calls it. Debounce
+     outcomes depend on the number of `Now()` calls. `lifecycle` calls
+     `Now()` in different places (Startup, every unit of work, Ready,
+     Shutdown), and from the work goroutine too.
+
+   Likely fix: an `Inline` option that runs `Work` on the loop goroutine,
+   for work that is always quick (a 100 ms GPIO poll), with `Now()` called
+   exactly where `iot.Run` calls it today. The heartbeat schedule then stays
+   in `iot`'s detector, called from `Work`, with lifecycle's `Heartbeat` set
+   to 0. In both cases `iot`'s `runner_test.go` and `wire_contract_test.go`,
+   and boiler-sensor's `lifecycle_golden_test.go`, must pass unchanged.
 3. Tag `lifecycle/v0.1.0` once tanktemp has run on it on a Pi. Moving
    boiler-sensor is tracked in sweeney/boiler-sensor#6.
 
