@@ -3,14 +3,19 @@ package mqttpubtest
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/sweeney/common/mqttpub"
 )
 
 // Fake records every published message so tests can inspect them.  Shared
 // across several daemon lifetimes it models the broker's retained store
-// (see Retained).  It is not safe for concurrent use.
+// (see Retained).  Its methods are safe for concurrent use; read its fields
+// directly only once the code under test has stopped publishing (use
+// Snapshot while it is running).
 type Fake struct {
+	mu sync.Mutex
+
 	Messages     []mqttpub.Message
 	PublishError error
 	// FailTopic, when set, selects which topics should fail.  Topics it does
@@ -30,6 +35,8 @@ type Fake struct {
 // Publish appends the message to the recorded list, or returns an error if
 // this topic is configured to fail.
 func (f *Fake) Publish(msg mqttpub.Message) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if err := f.errorFor(msg.Topic); err != nil {
 		f.Failed = append(f.Failed, msg.Topic)
 		return err
@@ -55,12 +62,16 @@ func (f *Fake) errorFor(topic string) error {
 
 // Close marks the publisher as closed.
 func (f *Fake) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.Closed = true
 	return nil
 }
 
 // Find returns the first message whose Topic matches, plus a found bool.
 func (f *Fake) Find(topic string) (mqttpub.Message, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for _, m := range f.Messages {
 		if m.Topic == topic {
 			return m, true
@@ -73,6 +84,8 @@ func (f *Fake) Find(topic string) (mqttpub.Message, bool) {
 // -1 if it was never published.  Tests use it to assert ordering — in
 // ups-mqtt, that the outage message precedes the bulk telemetry.
 func (f *Fake) IndexOf(topic string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for i, m := range f.Messages {
 		if m.Topic == topic {
 			return i
@@ -89,6 +102,8 @@ func (f *Fake) IndexOf(topic string) int {
 // A single Fake shared across several daemon lifetimes therefore
 // models the broker's memory, which outlives any one process.
 func (f *Fake) Retained(topic string) (mqttpub.Message, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	var last mqttpub.Message
 	found := false
 	for _, m := range f.Messages {
@@ -102,6 +117,8 @@ func (f *Fake) Retained(topic string) (mqttpub.Message, bool) {
 
 // Reset clears all recorded state so the fake can be reused between sub-tests.
 func (f *Fake) Reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.Messages = nil
 	f.PublishError = nil
 	f.FailTopic = nil
@@ -111,10 +128,16 @@ func (f *Fake) Reset() {
 }
 
 // Connected stands in for MQTTPublisher.Connected: true unless Disconnected.
-func (f *Fake) Connected() bool { return !f.Disconnected }
+func (f *Fake) Connected() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return !f.Disconnected
+}
 
 // All returns the messages published to topic, in order.
 func (f *Fake) All(topic string) []mqttpub.Message {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	var out []mqttpub.Message
 	for _, m := range f.Messages {
 		if m.Topic == topic {
@@ -122,4 +145,12 @@ func (f *Fake) All(topic string) []mqttpub.Message {
 		}
 	}
 	return out
+}
+
+// Snapshot returns a copy of the messages published so far, safe to read
+// while the code under test is still publishing.
+func (f *Fake) Snapshot() []mqttpub.Message {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]mqttpub.Message(nil), f.Messages...)
 }
