@@ -74,7 +74,9 @@ work.
    now stops startup, as in countinghouse, and systemd's restart (every 5s)
    recovers once config answers. Phase 2, sharing the `devices_<site>`
    schema, becomes its own top-level module, `devices`: see
-   [devices-DESIGN.md](devices-DESIGN.md).
+   [devices-DESIGN.md](devices-DESIGN.md). Step 0, the module, is built and
+   decodes both live sites' `devices_<site>` documents with no problems;
+   it is tagged only once statehouse has run on it.
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
    `retry` packages and similar publishers (capped backoff, retained state,
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a

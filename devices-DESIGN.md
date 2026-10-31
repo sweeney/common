@@ -4,7 +4,7 @@ Status: **design, not built.** This is phase 2 of next candidate 1 in
 [PLAN.md](PLAN.md): the transport was shared as `remoteconfig` (phase 1); the
 document it most often carries is still copied three times. Written 2026-10-31
 from a read of statehouse `origin/master`, countinghouse and greenhouse
-`origin/main`, and the live `devices_home` and `devices_schoolhouse` namespaces.
+`origin/main`, and both live sites' `devices_<site>` namespaces.
 
 ## Decisions (2026-10-31)
 
@@ -48,14 +48,14 @@ The core all three share: `scheme`, `primary`, `display`, `ieee_address`,
 
 ### What the live documents hold
 
-`devices_home`, 48 devices: every one has `class`, `display_name`, `room`,
+The larger site's document, 48 devices: every one has `class`, `display_name`, `room`,
 `floor` and `coordinate` (`[x, y]`, metres). 41 use `ieee_address` and 7 use
 `scheme`/`primary`; none use `display`. `environment_fields` 25,
 `friendly_name` 17, `thresholds` 10, `energy_strategy` 8 (all `integration`),
 `covers` 3 (all `house`), `note` 3, `target_temperature` 3. No `location`
 remains.
 
-`devices_schoolhouse`, 2 devices: no `room`, `floor` or `coordinate`. An
+The smaller site's, 2 devices: no `room`, `floor` or `coordinate`. An
 absent room means unknown, not invalid.
 
 The config service only checks that a document is a JSON object; nothing
@@ -167,7 +167,7 @@ validator's where they overlap:
 | `device.duplicate_identity` | two ids share `scheme:lower(primary)` or `scheme:lower(display)` (statehouse picks between them at random today) |
 | `device.legacy_location` | still carries `location` |
 
-A missing `room` or `floor` is not a problem (`devices_schoolhouse`). Turning
+A missing `room` or `floor` is not a problem (the smaller site has none). Turning
 any of these into a refusal is a later, per-service decision.
 
 ## Behaviour changes, per service
@@ -190,8 +190,8 @@ any of these into a refusal is a later, per-service decision.
 
 ## Test plan
 
-- Golden decode of fixtures copied from live `devices_home` and
-  `devices_schoolhouse`: every field of every device, and zero problems.
+- Golden decode of made-up fixtures shaped like both live sites'
+  documents: every field of every device, and zero problems.
 - Per-field leniency: a string `target_temperature`, a bad duration in
   `thresholds`, an `environment_fields` that is a string, a `coordinate` with
   three numbers. Each loses only that field, with one `device.bad_value`
@@ -199,7 +199,7 @@ any of these into a refusal is a later, per-service decision.
 - Not an object (array, string, `null`): an error.
 - Coverage table, including statehouse's "room published first" case.
 - `Normalise`: fold fills only empty fields; idempotent.
-- `Check` on each code, and none on schoolhouse's room-less devices.
+- `Check` on each code, and none on room-less devices.
 - YAML: a statehouse-style local device with thresholds decodes with yaml.v3
   (in statehouse's tests, since this module doesn't import yaml.v3).
 
@@ -225,7 +225,7 @@ Each step is its own PR, deployed and verified before the next, as in phase 1.
 
 ## Open questions for the user
 
-1. **The `floorplan` repo** generated `devices_home`, but it has no git remote
+1. **The `floorplan` repo** generated the larger site's devices document, but it has no git remote
    and its checked-in copy is 17 devices behind the live document, which is now
    edited in config directly. Retire its builder, or bring it back up to date
    and have it import this module? Either way it should be pushed somewhere.
