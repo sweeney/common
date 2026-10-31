@@ -1,0 +1,55 @@
+name: health
+
+on:
+  push:
+    branches: [main]
+    paths: ['health/**', '.github/workflows/health.yml']
+  pull_request:
+    branches: [main]
+    paths: ['health/**', '.github/workflows/health.yml']
+
+defaults:
+  run:
+    working-directory: health
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: health/go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: health/go.mod
+
+      # Consumers are Pi daemons down to a Pi Zero, so the module must
+      # cross-compile there even though the tests run on amd64.
+      - name: Cross-compile for linux/arm64
+        env:
+          GOOS: linux
+          GOARCH: arm64
+        run: go build ./...
+
+      - name: Cross-compile for linux/arm (Pi Zero)
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: '6'
+        run: go build ./...
