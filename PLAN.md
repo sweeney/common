@@ -144,11 +144,11 @@ Follow-ups found along the way:
   (#43, b6f3589; running 7827b97 since 15:25, rollback c6b943f; its 401s are
   now JSON, as its spec says). Next: read the warnings for about a week, then make
   `enforce` the default. No warnings by 2026-10-30 evening.
-- config's R2 backups after the move to `backup`: checked on 2026-10-30 with
-  sweeney/config's `deploy/check-backups.sh` (sweeney/config#9, 120b4bd). 5 ok
-  and 0 failures: one backup on each UTC day since 2026-10-28, newest
-  2026-10-30T00:00:00Z, all under `production/backups/config/`, and no
-  `backup_failure` in the journal.
+- config's R2 backups after the move to `backup`: closed. Checked with
+  sweeney/config's `deploy/check-backups.sh` (sweeney/config#9, 120b4bd) on
+  2026-10-30 and again on 2026-10-31: 5 ok and 0 failures, one backup on each
+  UTC day 29–31 October, newest 2026-10-31T00:00:00Z, all under
+  `production/backups/config/`, and no `backup_failure` in the journal.
 
 **Order of work** (each step ends green):
 
