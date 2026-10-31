@@ -68,8 +68,9 @@ func DefaultTuning() Tuning {
 // QoS 1+ publish in its in-memory store, then resends the lot on reconnect
 // in map order.  A live test of ups-mqtt (its docs/live-tests.md) saw 6½
 // hours of backlog — ~4,650 messages — land on the broker in two seconds,
-// shuffled, with a stale outage payload able to arrive after its clear.  Each of those
-// publishes also waited out the timeout, stretching a 10 s poll to 30 s.
+// shuffled, with a stale outage payload able to arrive after its clear.
+// Each of those publishes also waited out the timeout, stretching a 10 s
+// poll to 30 s.
 //
 // With auto-reconnect off, a lost connection leaves the client disconnected,
 // so publishes fail at once; and an explicit Connect on a clean session
@@ -107,6 +108,15 @@ type MQTTPublisher struct {
 	lastFailed bool
 	// closed stops a reconnect in flight from outliving Close.
 	closed bool
+
+	watches []watch
+}
+
+// watch is a subscription made on every (re)connect.
+type watch struct {
+	topic  string
+	onMsg  func(payload string)
+	onLost func()
 }
 
 // NewMQTTPublisher creates an MQTT client with DefaultTuning but does not
@@ -145,6 +155,7 @@ func NewMQTTPublisherWith(cfg Options, lwtTopic, lwtPayload string, tn Tuning) (
 	opts.SetCleanSession(true)
 	opts.SetAutoReconnect(false)
 	opts.SetConnectionLostHandler(p.connectionLost)
+	opts.SetOnConnectHandler(p.subscribe)
 	opts.SetWill(lwtTopic, lwtPayload, cfg.WillQOS, true)
 
 	if cfg.TLSCACert != "" {
@@ -199,10 +210,49 @@ func (p *MQTTPublisher) connectOnce(ctx context.Context) error {
 // the connection was down failed and was not queued.
 func (p *MQTTPublisher) Reconnected() <-chan struct{} { return p.reconnected }
 
+// Watch subscribes to topic on this connection, now if it is open and again
+// on every reconnect, so a retained message is delivered each time. onLost
+// runs when the connection drops, since changes made while it is down are
+// missed. Call it before Connect.
+func (p *MQTTPublisher) Watch(topic string, onMsg func(payload string), onLost func()) {
+	p.mu.Lock()
+	p.watches = append(p.watches, watch{topic, onMsg, onLost})
+	p.mu.Unlock()
+}
+
+// lostWatches tells every watch its connection has gone.
+func (p *MQTTPublisher) lostWatches() {
+	p.mu.Lock()
+	ws := append([]watch(nil), p.watches...)
+	p.mu.Unlock()
+	for _, w := range ws {
+		if w.onLost != nil {
+			w.onLost()
+		}
+	}
+}
+
+// subscribe is paho's OnConnect handler: (re)subscribe every watch.
+func (p *MQTTPublisher) subscribe(c mqtt.Client) {
+	p.mu.Lock()
+	ws := append([]watch(nil), p.watches...)
+	p.mu.Unlock()
+	for _, w := range ws {
+		w := w
+		tok := c.Subscribe(w.topic, 1, func(_ mqtt.Client, m mqtt.Message) { w.onMsg(string(m.Payload())) })
+		go func() {
+			if !tok.WaitTimeout(p.timeout) || tok.Error() != nil {
+				log.Printf("subscribing to %s on %s failed: %v", w.topic, p.broker, tok.Error())
+			}
+		}()
+	}
+}
+
 // connectionLost is paho's handler for an unexpected disconnect (not one
 // asked for by Close).  It runs on its own goroutine.
 func (p *MQTTPublisher) connectionLost(_ mqtt.Client, err error) {
 	log.Printf("MQTT connection to %s lost: %v — reconnecting", p.broker, err)
+	p.lostWatches()
 	p.reconnectLoop(time.Now())
 }
 
@@ -295,6 +345,7 @@ func (p *MQTTPublisher) isStalled() bool {
 		p.stalled = nil
 		go func() {
 			p.client.Disconnect(0)
+			p.lostWatches()
 			p.reconnectLoop(time.Now())
 		}()
 	}
