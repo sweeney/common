@@ -383,3 +383,18 @@ func TestCheckDoesNotNormaliseTheCallersMap(t *testing.T) {
 		t.Errorf("Check changed the map: %+v", m["a"])
 	}
 }
+
+// An empty duration string is an explicit zero, not absent: statehouse has
+// always read it that way, and a zero overrides the class default.
+func TestThresholdsEmptyDurationIsZero(t *testing.T) {
+	var th Thresholds
+	if err := json.Unmarshal([]byte(`{"active_sustained_for": ""}`), &th); err != nil {
+		t.Fatal(err)
+	}
+	if th.ActiveSustainedFor == nil || *th.ActiveSustainedFor != 0 {
+		t.Errorf("ActiveSustainedFor = %v, want a pointer to 0", th.ActiveSustainedFor)
+	}
+	if th.InactiveSustainedFor != nil {
+		t.Errorf("InactiveSustainedFor = %v, want nil (absent)", th.InactiveSustainedFor)
+	}
+}

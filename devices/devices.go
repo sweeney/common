@@ -119,12 +119,16 @@ func (t *Thresholds) UnmarshalJSON(b []byte) error {
 		{&out.ActiveSustainedFor, raw.ActiveSustainedFor, "active_sustained_for"},
 		{&out.InactiveSustainedFor, raw.InactiveSustainedFor, "inactive_sustained_for"},
 	} {
-		if f.src == nil || *f.src == "" {
+		if f.src == nil {
 			continue
 		}
-		d, err := time.ParseDuration(*f.src)
-		if err != nil {
-			return fmt.Errorf("%s: %w", f.name, err)
+		// An empty string is an explicit zero, as statehouse has always read it.
+		var d time.Duration
+		if *f.src != "" {
+			var err error
+			if d, err = time.ParseDuration(*f.src); err != nil {
+				return fmt.Errorf("%s: %w", f.name, err)
+			}
 		}
 		*f.dst = &d
 	}
