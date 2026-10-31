@@ -35,7 +35,10 @@ from a read of statehouse `origin/master`, countinghouse and greenhouse
    malformed threshold makes statehouse drop the whole remote devices document.
    With one shared type that would spread to every service, and to every field.
    Instead, decoding is per field: a value that doesn't fit its type is dropped,
-   reported, and the rest of the device kept.
+   reported, and the rest of the device kept. Within `thresholds` it is per
+   threshold, so one bad duration doesn't send the device back to its class
+   defaults for all of them. A device id or key given twice keeps the last,
+   as encoding/json does, and is reported rather than merged in silence.
 
 ## What exists today
 
@@ -164,10 +167,13 @@ validator's where they overlap:
 
 | Code | When |
 |---|---|
-| `device.bad_value` | from `Decode`: a value didn't fit its field and was dropped |
+| `device.bad_value` | from `Decode`: a value didn't fit its field (or one threshold) and was dropped |
+| `device.duplicate_key` | from `Decode`: a field given twice, case variants included; the last is used |
+| `device.duplicate_id` | from `Decode`: a device id given twice; the last is used |
+| `device.room_malformed` | `room` isn't a `<floor>.<room>` id |
 | `device.floor_mismatch` | `room` isn't prefixed by `floor.` |
 | `device.covers_unresolved` | `covers` is neither `house` nor room-shaped |
-| `device.identity_missing` | no `scheme`/`primary` and no `ieee_address`: statehouse can never match it |
+| `device.identity_missing` | no `scheme`/`primary` and no `ieee_address`: statehouse can never match it. A Zigbee address under another adapter's scheme doesn't count |
 | `device.duplicate_identity` | two ids share `scheme:lower(primary)` or `scheme:lower(display)` (statehouse picks between them at random today) |
 | `device.legacy_location` | still carries `location` |
 
@@ -196,14 +202,16 @@ any of these into a refusal is a later, per-service decision.
 
 - Golden decode of made-up fixtures shaped like both live sites'
   documents: every field of every device, and zero problems.
-- Per-field leniency: a string `target_temperature`, a bad duration in
-  `thresholds`, an `environment_fields` that is a string. Each loses only
-  that field, with one `device.bad_value`
-  naming the id and key; the device's other fields survive.
+- Per-field leniency: a string `target_temperature`, an `environment_fields`
+  that is a string. Each loses only that field, with one `device.bad_value`
+  naming the id and key; the device's other fields survive. A bad duration
+  in `thresholds` loses only that threshold.
+- A key or device id given twice: the last wins, and it is reported.
 - Not an object (array, string, `null`): an error.
 - `coordinate` and `note` decode as unknown keys and never come back out.
 - Coverage table, including statehouse's "room published first" case.
-- `Normalise`: fold fills only empty fields; idempotent.
+- `Normalise`: fold fills only empty fields; idempotent; leaves a device
+  with another adapter's scheme alone.
 - `Check` on each code, and none on room-less devices.
 - YAML: a statehouse-style local device with thresholds decodes with yaml.v3
   (in statehouse's tests, since this module doesn't import yaml.v3).

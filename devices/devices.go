@@ -105,18 +105,23 @@ func (t *Thresholds) UnmarshalJSON(b []byte) error {
 		if f.src == nil {
 			continue
 		}
-		// An empty string is an explicit zero, as statehouse has always read it.
-		var d time.Duration
-		if *f.src != "" {
-			var err error
-			if d, err = time.ParseDuration(*f.src); err != nil {
-				return fmt.Errorf("%s: %w", f.name, err)
-			}
+		d, err := parseDuration(*f.src)
+		if err != nil {
+			return fmt.Errorf("%s: %w", f.name, err)
 		}
 		*f.dst = &d
 	}
 	*t = out
 	return nil
+}
+
+// parseDuration reads a threshold duration. An empty string is an explicit
+// zero, as statehouse has always read it.
+func parseDuration(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	return time.ParseDuration(s)
 }
 
 // MarshalJSON writes the durations back as strings, so a decoded document
@@ -175,9 +180,13 @@ func (d Device) CoversWholeSite() bool {
 // Normalise folds the legacy Zigbee2MQTT shorthand into the canonical fields:
 // ieee_address becomes scheme zigbee with that primary, and friendly_name the
 // display. It fills only empty fields, so it is safe to call more than once.
-// Decode calls it; a service loading devices any other way (local YAML) calls
-// it itself.
+// A device whose scheme is another adapter's is left alone: a Zigbee address
+// is no identity for it. Decode calls Normalise; a service loading devices
+// any other way (local YAML) calls it itself.
 func (d *Device) Normalise() {
+	if d.Scheme != "" && d.Scheme != "zigbee" {
+		return
+	}
 	if d.Scheme == "" && (d.IEEEAddress != "" || d.FriendlyName != "") {
 		d.Scheme = "zigbee"
 	}

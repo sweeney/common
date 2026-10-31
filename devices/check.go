@@ -30,8 +30,10 @@ func Check(m map[string]Device) []Problem {
 		d := m[id]
 		d.Normalise()
 
-		if d.Room != "" && d.Floor != "" {
-			if floor, _, ok := strings.Cut(d.Room, "."); ok && floor != d.Floor {
+		if d.Room != "" && !roomShaped(d.Room) {
+			add(id, CodeRoomMalformed, "room %q is not a \"<floor>.<room>\" id", d.Room)
+		} else if d.Room != "" && d.Floor != "" {
+			if floor, _, _ := strings.Cut(d.Room, "."); floor != d.Floor {
 				add(id, CodeFloorMismatch, "room %q is not on floor %q", d.Room, d.Floor)
 			}
 		}
@@ -56,6 +58,12 @@ func Check(m map[string]Device) []Problem {
 			add(id, CodeLegacyLocation, "still carries location %q; use room and covers", d.Location)
 		}
 	}
+	sort.SliceStable(problems, func(i, j int) bool {
+		if problems[i].ID != problems[j].ID {
+			return problems[i].ID < problems[j].ID
+		}
+		return problems[i].Code < problems[j].Code
+	})
 	return problems
 }
 

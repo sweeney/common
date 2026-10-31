@@ -87,12 +87,10 @@ func TestDecodeDropsOnlyTheBadField(t *testing.T) {
 		key, value string
 	}{
 		"string target_temperature":   {"target_temperature", `"5"`},
-		"bad duration in thresholds":  {"thresholds", `{"idle_below_w": 5, "active_sustained_for": "soon"}`},
-		"non-number threshold":        {"thresholds", `{"idle_below_w": "five"}`},
 		"thresholds not an object":    {"thresholds", `[]`},
 		"environment_fields a string": {"environment_fields", `"temperature_c"`},
 		"room a number":               {"room", `7`},
-		"class an object":             {"class", `{}`},
+		"energy_strategy an object":   {"energy_strategy", `{}`},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -416,5 +414,113 @@ func TestCoordinateAndNoteAreNotHeld(t *testing.T) {
 	}
 	if kept["room"] != "ground.kitchen" {
 		t.Errorf("room lost: %v", kept)
+	}
+}
+
+// Within thresholds, too, a bad value costs only itself: the device keeps its
+// other thresholds rather than falling back to the class defaults for all.
+func TestDecodeThresholdsDropOnlyTheBadOne(t *testing.T) {
+	got, problems, err := Decode([]byte(`{"d": {"thresholds":
+		{"idle_below_w": 5, "active_sustained_for": "soon", "active_above_w": "fifty", "inactive_sustained_for": ""}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &Thresholds{IdleBelowW: f64(5), InactiveSustainedFor: dur(0)}
+	if !reflect.DeepEqual(got["d"].Thresholds, want) {
+		t.Errorf("thresholds = %+v, want %+v", got["d"].Thresholds, want)
+	}
+	var fields []string
+	for _, p := range problems {
+		if p.ID != "d" || p.Code != CodeBadValue {
+			t.Errorf("problem %+v", p)
+		}
+		fields = append(fields, p.Field)
+	}
+	if w := []string{"thresholds.active_above_w", "thresholds.active_sustained_for"}; !reflect.DeepEqual(fields, w) {
+		t.Errorf("problem fields = %v, want %v", fields, w)
+	}
+}
+
+// A legacy Zigbee field next to another adapter's scheme is not folded in:
+// a Zigbee address is no identity for a tasmota device. Check reports it.
+func TestNormaliseLeavesOtherSchemesAlone(t *testing.T) {
+	d := Device{Scheme: "tasmota", IEEEAddress: "0x1", FriendlyName: "lamp"}
+	d.Normalise()
+	if d.Primary != "" || d.Display != "" {
+		t.Errorf("folded into a tasmota device: %+v", d)
+	}
+	z := Device{Scheme: "zigbee", IEEEAddress: "0x1"}
+	z.Normalise()
+	if z.Primary != "0x1" {
+		t.Errorf("explicit zigbee scheme not folded: %+v", z)
+	}
+	ps := Check(map[string]Device{"a": {Scheme: "tasmota", IEEEAddress: "0x1"}})
+	if len(ps) != 1 || ps[0].Code != CodeIdentityMissing {
+		t.Errorf("Check = %v, want identity_missing", ps)
+	}
+}
+
+// Check orders problems by device id, then code, as documented.
+func TestCheckOrder(t *testing.T) {
+	ps := Check(map[string]Device{
+		"b": {Scheme: "meter", Primary: "m", Room: "first.hall", Floor: "ground", Covers: "everywhere"},
+		"a": {Location: "hall"},
+	})
+	var got []string
+	for _, p := range ps {
+		got = append(got, p.ID+"/"+p.Code)
+	}
+	want := []string{"a/" + CodeIdentityMissing, "a/" + CodeLegacyLocation,
+		"b/" + CodeCoversUnresolved, "b/" + CodeFloorMismatch}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("order = %v, want %v", got, want)
+	}
+}
+
+func TestCheckRoomMalformed(t *testing.T) {
+	ps := Check(map[string]Device{"a": {Scheme: "meter", Primary: "m", Room: "kitchen", Floor: "ground"}})
+	if len(ps) != 1 || ps[0].Code != CodeRoomMalformed {
+		t.Errorf("Check = %v, want one %s", ps, CodeRoomMalformed)
+	}
+}
+
+// Two keys for one field (case variants, or the same key twice): the last in
+// the document wins, as with encoding/json, and the others are reported
+// without being decoded, so a bad earlier one is not called a bad value.
+func TestDecodeKeyGivenTwice(t *testing.T) {
+	cases := map[string]struct {
+		doc, room, ignored string
+	}{
+		"case variants, last wins": {`{"d": {"room": "a.x", "Room": "b.y"}}`, "b.y", "room"},
+		"bad one first":            {`{"d": {"Room": 7, "room": "a.x"}}`, "a.x", "Room"},
+		"same key twice":           {`{"d": {"room": "a.x", "room": "b.y"}}`, "b.y", "room"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, problems, err := Decode([]byte(c.doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got["d"].Room != c.room {
+				t.Errorf("room = %q, want %q", got["d"].Room, c.room)
+			}
+			if len(problems) != 1 || problems[0].Code != CodeDuplicateKey || problems[0].Field != c.ignored {
+				t.Errorf("problems = %+v, want one %s on %q", problems, CodeDuplicateKey, c.ignored)
+			}
+		})
+	}
+}
+
+// A device id given twice keeps the last, as encoding/json would, but says so.
+func TestDecodeDeviceIDGivenTwice(t *testing.T) {
+	got, problems, err := Decode([]byte(`{"a": {"class": "x"}, "b": {}, "a": {"class": "y"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["a"].Class != "y" || len(got) != 2 {
+		t.Errorf("got %+v", got)
+	}
+	if len(problems) != 1 || problems[0].ID != "a" || problems[0].Code != CodeDuplicateID {
+		t.Errorf("problems = %+v, want one %s on a", problems, CodeDuplicateID)
 	}
 }
