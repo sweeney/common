@@ -79,12 +79,12 @@ work.
    | Consumer | Status |
    |---|---|
    | (module) | ✅ sweeney/common#7, merged 9b6b7c5, tagged `devices/v0.1.0`; decodes both live sites' documents with no problems |
-   | statehouse | sweeney/statehouse#78, running 1c4791d since 2026-10-31 12:06 (rollback a00440e); `/config/devices` identical before and after; merge pending |
-   | countinghouse | sweeney/countinghouse#63 (also `backup/v0.1.1`), running fe0c82d since 2026-10-31 12:17 (rollback 8345603); devices, rooms, floors, series and bill identical before and after; merge pending |
-   | greenhouse | sweeney/greenhouse#44, running f99d002 since 2026-10-31 12:22 (rollback 7827b97); devices, rooms, floors, fields and series identical before and after; merge pending. It carries `covers` but doesn't act on it (open question 2 in the design) |
+   | statehouse | ✅ sweeney/statehouse#78, running 1c4791d since 2026-10-31 12:06 (rollback a00440e); `/config/devices` identical before and after; merged as c350bcd |
+   | countinghouse | ✅ sweeney/countinghouse#63 (also `backup/v0.1.1`), running fe0c82d since 2026-10-31 12:17 (rollback 8345603); devices, rooms, floors, series and bill identical before and after; merged as 08099a8 |
+   | greenhouse | ✅ sweeney/greenhouse#44, running f99d002 since 2026-10-31 12:22 (rollback 7827b97); devices, rooms, floors, fields and series identical before and after; merged as 48bbead. It carries `covers` but doesn't act on it (open question 2 in the design) |
 
    **Every consumer is now on the shared schema** and none keeps a copy;
-   what's left is merging the three service PRs.
+   all three service PRs are merged. ✅
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
    `retry` packages and similar publishers (capped backoff, retained state,
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
@@ -148,7 +148,7 @@ Follow-ups found along the way:
   names the binary as invoked and says to stop the service first. config is
   on it (sweeney/config#10, 859906d; running 06ccbb7), with
   `deploy/restore-backup.sh` for restores (sweeney/config#11, 13f6cbd).
-  countinghouse is on it via sweeney/countinghouse#63; identity's bump is
+  countinghouse is on it (sweeney/countinghouse#63, 08099a8); identity's bump is
   with config-01.
 - Audience enforcement for countinghouse and greenhouse, warn-only first:
   sweeney/countinghouse#59, sweeney/greenhouse#39. Step 1, the check in warn
