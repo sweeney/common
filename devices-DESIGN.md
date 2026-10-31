@@ -4,7 +4,7 @@ Status: **design, not built.** This is phase 2 of next candidate 1 in
 [PLAN.md](PLAN.md): the transport was shared as `remoteconfig` (phase 1); the
 document it most often carries is still copied three times. Written 2026-10-31
 from a read of statehouse `origin/master`, countinghouse and greenhouse
-`origin/main`, and the live `devices_home` and `devices_schoolhouse` namespaces.
+`origin/main`, and both live sites' `devices_<site>` namespaces.
 
 ## Decisions (2026-10-31)
 
@@ -17,18 +17,28 @@ from a read of statehouse `origin/master`, countinghouse and greenhouse
 2. **This module owns the schema.** statehouse wrote the original, but once the
    type lives here it is a consumer like the others. A new key in
    `devices_<site>` is a PR here first.
-3. **One schema for everything the namespace holds.** greenhouse's
-   `target_temperature` and `environment_fields`, statehouse's `thresholds` and
-   `energy_strategy`, and the floorplan tool's `coordinate` and `note` are all
-   facts about the device and are already in the document. They are typed here,
-   whichever service reads them. What a service *does* with a field stays in the
-   service.
+3. **One schema for what the services read.** greenhouse's
+   `target_temperature` and `environment_fields`, and statehouse's `thresholds`
+   and `energy_strategy`, are facts about the device and already in the
+   document. They are typed here, whichever service reads them. What a service
+   *does* with a field stays in the service.
+
+   **Except `coordinate` and `note`, on purpose** (revised 2026-10-31, while
+   moving statehouse). A coordinate places someone's belongings to the
+   centimetre in their home, and no service reads either key. statehouse
+   deliberately has no field for them, so no later API change can leak them,
+   and pins that in `TestNamespaceCoordinateAndNoteAreNotRelayed`. Typing them
+   here would put them in every service. They decode as unknown keys; the
+   floorplan tooling owns them.
 4. **statehouse's coverage rule** is the shared one (below).
 5. **A bad value loses only that field, never the document.** Today one
    malformed threshold makes statehouse drop the whole remote devices document.
    With one shared type that would spread to every service, and to every field.
    Instead, decoding is per field: a value that doesn't fit its type is dropped,
-   reported, and the rest of the device kept.
+   reported, and the rest of the device kept. Within `thresholds` it is per
+   threshold, so one bad duration doesn't send the device back to its class
+   defaults for all of them. A device id or key given twice keeps the last,
+   as encoding/json does, and is reported rather than merged in silence.
 
 ## What exists today
 
@@ -48,14 +58,15 @@ The core all three share: `scheme`, `primary`, `display`, `ieee_address`,
 
 ### What the live documents hold
 
-`devices_home`, 48 devices: every one has `class`, `display_name`, `room`,
-`floor` and `coordinate` (`[x, y]`, metres). 41 use `ieee_address` and 7 use
+The larger site's document, 48 devices: every one has `class`, `display_name`, `room`,
+`floor` and `coordinate` (`[x, y]`, metres; not held, see decision 3). 41
+use `ieee_address` and 7 use
 `scheme`/`primary`; none use `display`. `environment_fields` 25,
 `friendly_name` 17, `thresholds` 10, `energy_strategy` 8 (all `integration`),
 `covers` 3 (all `house`), `note` 3, `target_temperature` 3. No `location`
 remains.
 
-`devices_schoolhouse`, 2 devices: no `room`, `floor` or `coordinate`. An
+The smaller site's, 2 devices: no `room`, `floor` or `coordinate`. An
 absent room means unknown, not invalid.
 
 The config service only checks that a document is a JSON object; nothing
@@ -89,21 +100,17 @@ type Device struct {
 	Class       string `yaml:"class"        json:"class,omitempty"`
 	DisplayName string `yaml:"display_name" json:"display_name,omitempty"`
 
-	Room       string      `yaml:"room"       json:"room,omitempty"`
-	Floor      string      `yaml:"floor"      json:"floor,omitempty"`
-	Covers     string      `yaml:"covers"     json:"covers,omitempty"`
-	Location   string      `yaml:"location"   json:"location,omitempty"` // deprecated
-	Coordinate *Coordinate `yaml:"coordinate" json:"coordinate,omitempty"`
-	Note       string      `yaml:"note"       json:"note,omitempty"`
+	Room     string `yaml:"room"     json:"room,omitempty"`
+	Floor    string `yaml:"floor"    json:"floor,omitempty"`
+	Covers   string `yaml:"covers"   json:"covers,omitempty"`
+	Location string `yaml:"location" json:"location,omitempty"` // deprecated
+	// No coordinate or note: see decision 3.
 
 	EnergyStrategy    string      `yaml:"energy_strategy"    json:"energy_strategy,omitempty"`
 	Thresholds        *Thresholds `yaml:"thresholds"         json:"thresholds,omitempty"`
 	TargetTemperature *float64    `yaml:"target_temperature" json:"target_temperature,omitempty"`
 	EnvironmentFields []string    `yaml:"environment_fields" json:"environment_fields,omitempty"`
 }
-
-// Coordinate is a position on the site's floorplan, [x, y] in metres.
-type Coordinate [2]float64
 
 // Thresholds are per-device activity thresholds. Pointers, so an explicit
 // zero is honoured. Durations are strings in JSON ("30s"), as today.
@@ -160,14 +167,17 @@ validator's where they overlap:
 
 | Code | When |
 |---|---|
-| `device.bad_value` | from `Decode`: a value didn't fit its field and was dropped |
+| `device.bad_value` | from `Decode`: a value didn't fit its field (or one threshold) and was dropped |
+| `device.duplicate_key` | from `Decode`: a field given twice, case variants included; the last is used |
+| `device.duplicate_id` | from `Decode`: a device id given twice; the last is used |
+| `device.room_malformed` | `room` isn't a `<floor>.<room>` id |
 | `device.floor_mismatch` | `room` isn't prefixed by `floor.` |
 | `device.covers_unresolved` | `covers` is neither `house` nor room-shaped |
-| `device.identity_missing` | no `scheme`/`primary` and no `ieee_address`: statehouse can never match it |
+| `device.identity_missing` | no `scheme`/`primary` and no `ieee_address`: statehouse can never match it. A Zigbee address under another adapter's scheme doesn't count |
 | `device.duplicate_identity` | two ids share `scheme:lower(primary)` or `scheme:lower(display)` (statehouse picks between them at random today) |
 | `device.legacy_location` | still carries `location` |
 
-A missing `room` or `floor` is not a problem (`devices_schoolhouse`). Turning
+A missing `room` or `floor` is not a problem (the smaller site has none). Turning
 any of these into a refusal is a later, per-service decision.
 
 ## Behaviour changes, per service
@@ -190,16 +200,19 @@ any of these into a refusal is a later, per-service decision.
 
 ## Test plan
 
-- Golden decode of fixtures copied from live `devices_home` and
-  `devices_schoolhouse`: every field of every device, and zero problems.
-- Per-field leniency: a string `target_temperature`, a bad duration in
-  `thresholds`, an `environment_fields` that is a string, a `coordinate` with
-  three numbers. Each loses only that field, with one `device.bad_value`
-  naming the id and key; the device's other fields survive.
+- Golden decode of made-up fixtures shaped like both live sites'
+  documents: every field of every device, and zero problems.
+- Per-field leniency: a string `target_temperature`, an `environment_fields`
+  that is a string. Each loses only that field, with one `device.bad_value`
+  naming the id and key; the device's other fields survive. A bad duration
+  in `thresholds` loses only that threshold.
+- A key or device id given twice: the last wins, and it is reported.
 - Not an object (array, string, `null`): an error.
+- `coordinate` and `note` decode as unknown keys and never come back out.
 - Coverage table, including statehouse's "room published first" case.
-- `Normalise`: fold fills only empty fields; idempotent.
-- `Check` on each code, and none on schoolhouse's room-less devices.
+- `Normalise`: fold fills only empty fields; idempotent; leaves a device
+  with another adapter's scheme alone.
+- `Check` on each code, and none on room-less devices.
 - YAML: a statehouse-style local device with thresholds decodes with yaml.v3
   (in statehouse's tests, since this module doesn't import yaml.v3).
 
@@ -225,7 +238,7 @@ Each step is its own PR, deployed and verified before the next, as in phase 1.
 
 ## Open questions for the user
 
-1. **The `floorplan` repo** generated `devices_home`, but it has no git remote
+1. **The `floorplan` repo** generated the larger site's devices document, but it has no git remote
    and its checked-in copy is 17 devices behind the live document, which is now
    edited in config directly. Retire its builder, or bring it back up to date
    and have it import this module? Either way it should be pushed somewhere.

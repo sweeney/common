@@ -1,0 +1,57 @@
+{
+  "kitchen-dishwasher": {
+    "class": "cycle_power_device",
+    "coordinate": [8.241, 3.211],
+    "display_name": "Dishwasher (Kitchen)",
+    "energy_strategy": "integration",
+    "floor": "ground",
+    "ieee_address": "0x00000000000000a1",
+    "room": "ground.kitchen",
+    "thresholds": {
+      "active_above_w": 50,
+      "active_sustained_for": "30s",
+      "idle_below_w": 5,
+      "inactive_sustained_for": "30m"
+    }
+  },
+  "hall-climate": {
+    "class": "climate_sensor",
+    "coordinate": [1.5, 2],
+    "display_name": "Climate: Hall",
+    "environment_fields": ["humidity_pct", "temperature_c"],
+    "floor": "ground",
+    "friendly_name": "hall_climate",
+    "ieee_address": "0x00000000000000a2",
+    "note": "ceiling",
+    "room": "ground.hall"
+  },
+  "freezer-probe": {
+    "class": "temperature_probe",
+    "coordinate": [9, 4.25],
+    "display_name": "Freezer",
+    "environment_fields": ["temperature_c"],
+    "floor": "ground",
+    "primary": "freezer",
+    "room": "ground.kitchen",
+    "scheme": "climate",
+    "target_temperature": -18,
+    "thresholds": {"active_sustained_for": "0s"}
+  },
+  "electricity-meter": {
+    "class": "energy_meter",
+    "coordinate": [0.5, 0.5],
+    "covers": "house",
+    "display_name": "Electricity meter",
+    "floor": "ground",
+    "primary": "meter",
+    "room": "ground.hall",
+    "scheme": "meter"
+  },
+  "site-weatherstation": {
+    "class": "environmental_sensor",
+    "display_name": "Climate: Weather Station",
+    "environment_fields": ["pressure_hpa", "temperature_c", "wind_speed_ms"],
+    "primary": "site",
+    "scheme": "climate"
+  }
+}
