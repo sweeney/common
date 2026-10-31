@@ -81,7 +81,10 @@ work.
    | (module) | ✅ sweeney/common#7, merged 9b6b7c5, tagged `devices/v0.1.0`; decodes both live sites' documents with no problems |
    | statehouse | sweeney/statehouse#78, running 1c4791d since 2026-10-31 12:06 (rollback a00440e); `/config/devices` identical before and after; merge pending |
    | countinghouse | sweeney/countinghouse#63 (also `backup/v0.1.1`), running fe0c82d since 2026-10-31 12:17 (rollback 8345603); devices, rooms, floors, series and bill identical before and after; merge pending |
-   | greenhouse | next |
+   | greenhouse | sweeney/greenhouse#44, running f99d002 since 2026-10-31 12:22 (rollback 7827b97); devices, rooms, floors, fields and series identical before and after; merge pending. It carries `covers` but doesn't act on it (open question 2 in the design) |
+
+   **Every consumer is now on the shared schema** and none keeps a copy;
+   what's left is merging the three service PRs.
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
    `retry` packages and similar publishers (capped backoff, retained state,
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
