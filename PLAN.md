@@ -74,9 +74,14 @@ work.
    now stops startup, as in countinghouse, and systemd's restart (every 5s)
    recovers once config answers. Phase 2, sharing the `devices_<site>`
    schema, becomes its own top-level module, `devices`: see
-   [devices-DESIGN.md](devices-DESIGN.md). Step 0, the module, is built and
-   decodes both live sites' `devices_<site>` documents with no problems;
-   it is tagged only once statehouse has run on it.
+   [devices-DESIGN.md](devices-DESIGN.md). Consumers, one at a time:
+
+   | Consumer | Status |
+   |---|---|
+   | (module) | ✅ sweeney/common#7, merged 9b6b7c5, tagged `devices/v0.1.0`; decodes both live sites' documents with no problems |
+   | statehouse | sweeney/statehouse#78, running 1c4791d since 2026-10-31 12:06 (rollback a00440e); `/config/devices` identical before and after; merge pending |
+   | countinghouse | next |
+   | greenhouse | after countinghouse |
 2. **MQTT retry/publisher.** `netmon` and `ups-mqtt` have near-identical
    `retry` packages and similar publishers (capped backoff, retained state,
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
@@ -137,8 +142,10 @@ Follow-ups found along the way:
   it and deployed; their 2/s and 5/s limiters now send `1`.
 - `backup/cli`'s restore hint named `./identity-server config`, from when
   config ran inside it: fixed in `backup/v0.1.1` (sweeney/common#5), which
-  names the binary as invoked and says to stop the service first. Consumers
-  pick it up on their next bump.
+  names the binary as invoked and says to stop the service first. config is
+  on it (sweeney/config#10, 859906d; running 06ccbb7), with
+  `deploy/restore-backup.sh` for restores (sweeney/config#11, 13f6cbd).
+  identity and countinghouse pick it up on their next bump.
 - Audience enforcement for countinghouse and greenhouse, warn-only first:
   sweeney/countinghouse#59, sweeney/greenhouse#39. Step 1, the check in warn
   mode (`http.audience_check`, warn by default), is merged in countinghouse
