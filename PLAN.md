@@ -148,8 +148,8 @@ Follow-ups found along the way:
   names the binary as invoked and says to stop the service first. config is
   on it (sweeney/config#10, 859906d; running 06ccbb7), with
   `deploy/restore-backup.sh` for restores (sweeney/config#11, 13f6cbd).
-  countinghouse is on it (sweeney/countinghouse#63, 08099a8); identity's bump is
-  with config-01.
+  countinghouse is on it (sweeney/countinghouse#63, 08099a8); identity is on it
+  (sweeney/identity#52, 2f87e49; running 98d8c23). ✅
 - Audience enforcement for countinghouse and greenhouse, warn-only first:
   sweeney/countinghouse#59, sweeney/greenhouse#39. Step 1, the check in warn
   mode (`http.audience_check`, warn by default), is merged in countinghouse
