@@ -147,7 +147,7 @@ Follow-ups found along the way:
   config ran inside it: fixed in `backup/v0.1.1` (sweeney/common#5), which
   names the binary as invoked and says to stop the service first. config is
   on it (sweeney/config#10, 859906d; running 06ccbb7), with
-  `deploy/restore-backup.sh` for restores (sweeney/config#11, 13f6cbd).
+  `deploy/restore-backup.sh` for restores (sweeney/config#11, 13f6cbd; review follow-ups in sweeney/config#12, 25e327a).
   countinghouse is on it (sweeney/countinghouse#63, 08099a8); identity is on it
   (sweeney/identity#52, 2f87e49; running 98d8c23). ✅
 - Audience enforcement for countinghouse and greenhouse, warn-only first:
