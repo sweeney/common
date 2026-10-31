@@ -20,6 +20,7 @@ only pulls the dependencies of the module it actually imports.
 | `web` | `github.com/sweeney/common/web` | **landed — `web/v0.2.1`** (from identity/common) | `x/time`, `yaml.v3` |
 | `remoteconfig` | `github.com/sweeney/common/remoteconfig` | **landed — `remoteconfig/v0.2.0`** (config.swee.net client; replaces the copies in statehouse, countinghouse, greenhouse, pi-price-screen) | stdlib only |
 | `devices` | `github.com/sweeney/common/devices` | **built, not tagged** (the `devices_<site>` schema; replaces the copies in statehouse, countinghouse, greenhouse) | stdlib only |
+| `mqttpub` | `github.com/sweeney/common/mqttpub` | **built on a local branch, not tagged** (the MQTT publisher, retry and broker test helpers from ups-mqtt; replaces the copy in netmon; see [`mqttpub-DESIGN.md`](mqttpub-DESIGN.md)) | Paho MQTT only |
 
 `auth` stays in `github.com/sweeney/identity/common`, identity's own client library.
 

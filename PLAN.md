@@ -90,6 +90,13 @@ work.
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
    bridge). Extract once the two stop diverging.
 
+   **Built as module `mqttpub` on a local branch (`feat/mqttpub`), not
+   tagged, not pushed** (2026-10-31): ups-mqtt's publisher, retry and
+   `mqtttest`, with netmon's `Watch` and `Options`, plus `Connected()` for
+   `/healthz`. Migration: ups-mqtt first, deployed and verified, then tag
+   `mqttpub/v0.1.0`; then netmon; then tanktemp. See
+   [`mqttpub-DESIGN.md`](mqttpub-DESIGN.md).
+
 ## Modules 2–4: `db`, `backup`, `web` (moved from `identity/common`)
 
 The generic service-infrastructure packages of

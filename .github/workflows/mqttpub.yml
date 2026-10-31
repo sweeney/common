@@ -1,0 +1,76 @@
+name: mqttpub
+
+on:
+  push:
+    branches: [main]
+    paths: ['mqttpub/**', '.github/workflows/mqttpub.yml']
+  pull_request:
+    branches: [main]
+    paths: ['mqttpub/**', '.github/workflows/mqttpub.yml']
+
+defaults:
+  run:
+    working-directory: mqttpub
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: mqttpub/go.sum
+
+      # The broker tests run against a real Mosquitto. They skip without it
+      # locally but fail under CI (the CI variable is set), so a missing
+      # install cannot pass silently.
+      - name: Install Mosquitto
+        run: sudo apt-get update -q && sudo apt-get install -y -q mosquitto
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo '### mqttpub coverage'
+            echo '```'
+            go tool cover -func=coverage.out | tail -20
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: mqttpub/go.sum
+
+      # ups-mqtt and netmon run on Pis, and tanktemp will too, so the module
+      # must cross-compile there even though the tests run on amd64.
+      - name: Cross-compile for linux/arm64
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: go build ./...
+
+      - name: Cross-compile for linux/arm (Pi Zero)
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: '6'
+          CGO_ENABLED: '0'
+        run: go build ./...
