@@ -47,9 +47,12 @@ type Device struct {
 	Covers string `yaml:"covers" json:"covers,omitempty"`
 	// Location is the deprecated free-text place, still decoded while
 	// namespaces and services migrate on separate schedules.
-	Location   string      `yaml:"location"   json:"location,omitempty"`
-	Coordinate *Coordinate `yaml:"coordinate" json:"coordinate,omitempty"`
-	Note       string      `yaml:"note"       json:"note,omitempty"`
+	Location string `yaml:"location" json:"location,omitempty"`
+
+	// The namespace's coordinate (where the device is in the house, to the
+	// centimetre) and free-text note have no field, on purpose: no service
+	// reads them, and a service cannot leak what it never holds. Decode
+	// ignores them like any unknown key. The floorplan tooling owns them.
 
 	// EnergyStrategy overrides the class's energy strategy for this device,
 	// e.g. "integration" for a counter too coarse for its cycles.
@@ -61,26 +64,6 @@ type Device struct {
 	// EnvironmentFields are the environmental readings the device reports,
 	// e.g. "temperature_c".
 	EnvironmentFields []string `yaml:"environment_fields" json:"environment_fields,omitempty"`
-}
-
-// Coordinate is a position on the site's floorplan, [x, y] in metres.
-type Coordinate [2]float64
-
-// UnmarshalJSON refuses anything but exactly two numbers, which encoding/json
-// would otherwise truncate or pad without a word.
-func (c *Coordinate) UnmarshalJSON(b []byte) error {
-	var v []float64
-	if err := json.Unmarshal(b, &v); err != nil {
-		return err
-	}
-	if v == nil {
-		return nil
-	}
-	if len(v) != 2 {
-		return fmt.Errorf("coordinate has %d numbers, want 2 ([x, y])", len(v))
-	}
-	*c = Coordinate{v[0], v[1]}
-	return nil
 }
 
 // Thresholds are a device's activity-detection thresholds. Every field is a

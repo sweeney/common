@@ -34,7 +34,6 @@ func TestDecodeFixture(t *testing.T) {
 			IEEEAddress: "0x00000000000000a1",
 			Class:       "cycle_power_device", DisplayName: "Dishwasher (Kitchen)",
 			Room: "ground.kitchen", Floor: "ground",
-			Coordinate:     &Coordinate{8.241, 3.211},
 			EnergyStrategy: "integration",
 			Thresholds: &Thresholds{
 				IdleBelowW: f64(5), ActiveAboveW: f64(50),
@@ -46,15 +45,12 @@ func TestDecodeFixture(t *testing.T) {
 			IEEEAddress: "0x00000000000000a2", FriendlyName: "hall_climate",
 			Class: "climate_sensor", DisplayName: "Climate: Hall",
 			Room: "ground.hall", Floor: "ground",
-			Coordinate:        &Coordinate{1.5, 2},
-			Note:              "ceiling",
 			EnvironmentFields: []string{"humidity_pct", "temperature_c"},
 		},
 		"freezer-probe": {
 			Scheme: "climate", Primary: "freezer",
 			Class: "temperature_probe", DisplayName: "Freezer",
 			Room: "ground.kitchen", Floor: "ground",
-			Coordinate:        &Coordinate{9, 4.25},
 			Thresholds:        &Thresholds{ActiveSustainedFor: dur(0)},
 			TargetTemperature: f64(-18),
 			EnvironmentFields: []string{"temperature_c"},
@@ -63,7 +59,6 @@ func TestDecodeFixture(t *testing.T) {
 			Scheme: "meter", Primary: "meter",
 			Class: "energy_meter", DisplayName: "Electricity meter",
 			Room: "ground.hall", Floor: "ground", Covers: "house",
-			Coordinate: &Coordinate{0.5, 0.5},
 		},
 		"site-weatherstation": {
 			Scheme: "climate", Primary: "site",
@@ -96,8 +91,6 @@ func TestDecodeDropsOnlyTheBadField(t *testing.T) {
 		"non-number threshold":        {"thresholds", `{"idle_below_w": "five"}`},
 		"thresholds not an object":    {"thresholds", `[]`},
 		"environment_fields a string": {"environment_fields", `"temperature_c"`},
-		"coordinate of three":         {"coordinate", `[1, 2, 3]`},
-		"coordinate of one":           {"coordinate", `[1]`},
 		"room a number":               {"room", `7`},
 		"class an object":             {"class", `{}`},
 	}
@@ -182,7 +175,7 @@ func TestDecodeKeys(t *testing.T) {
 }
 
 func TestDecodeNullIsAbsent(t *testing.T) {
-	got, problems, err := Decode([]byte(`{"d": {"room": null, "thresholds": null, "coordinate": null}}`))
+	got, problems, err := Decode([]byte(`{"d": {"room": null, "thresholds": null, "target_temperature": null}}`))
 	if err != nil || len(problems) != 0 {
 		t.Fatalf("err %v, problems %v", err, problems)
 	}
@@ -396,5 +389,32 @@ func TestThresholdsEmptyDurationIsZero(t *testing.T) {
 	}
 	if th.InactiveSustainedFor != nil {
 		t.Errorf("InactiveSustainedFor = %v, want nil (absent)", th.InactiveSustainedFor)
+	}
+}
+
+// coordinate and note are in every live document but held by no service: a
+// device's position in the house to the centimetre is not something a service
+// that never reads it should be able to leak. They decode as unknown keys,
+// and must not come back out.
+func TestCoordinateAndNoteAreNotHeld(t *testing.T) {
+	got, problems, err := Decode([]byte(`{"d": {"room": "ground.kitchen", "coordinate": [8.241, 3.211], "note": "behind the counter"}}`))
+	if err != nil || len(problems) != 0 {
+		t.Fatalf("err %v, problems %v", err, problems)
+	}
+	b, err := json.Marshal(got["d"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept map[string]any
+	if err := json.Unmarshal(b, &kept); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"coordinate", "note"} {
+		if v, ok := kept[key]; ok {
+			t.Errorf("%s survived decoding as %v", key, v)
+		}
+	}
+	if kept["room"] != "ground.kitchen" {
+		t.Errorf("room lost: %v", kept)
 	}
 }
