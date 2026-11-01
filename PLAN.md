@@ -90,6 +90,22 @@ work.
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
    bridge). Extract once the two stop diverging.
 
+3. **Daemon lifecycle and `/healthz` (`lifecycle`, `health`).** Built
+   locally for tanktemp (DS18B20 hot water probes), the third Pi daemon.
+   `lifecycle` is the runtime pulled out of `iot.Run`; `iot` gets
+   rebuilt on it in `iot/v0.2.0`, with its tests and boiler-sensor's goldens
+   unchanged. `health` is the `/healthz` that boiler-sensor and
+   pi-price-screen each copy. Both are tagged once tanktemp has run on them on
+   a Pi; boiler-sensor and pi-price-screen then move in their own sessions
+   (sweeney/boiler-sensor#6, sweeney/pi-price-screen#3). See
+   [lifecycle-DESIGN.md](lifecycle-DESIGN.md) and
+   [health-DESIGN.md](health-DESIGN.md).
+4. **Not shared, on purpose: the deploy `lib.sh`.** tanktemp copies
+   boiler-sensor's `deploy/lib.sh` (build, version stamping, symlinked
+   releases, `/healthz` and retained-heartbeat verification, auto-rollback).
+   It is shell, used by two repos, and changes with each one's deploy; revisit
+   if a third copy appears.
+
 ## Modules 2–4: `db`, `backup`, `web` (moved from `identity/common`)
 
 The generic service-infrastructure packages of
