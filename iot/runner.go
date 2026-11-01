@@ -46,11 +46,15 @@ type RunConfig struct {
 	Heartbeat time.Duration
 	Poll      time.Duration
 
-	Now         func() time.Time           // default time.Now
-	Tick        <-chan time.Time           // default time.NewTicker(Poll).C
-	Signals     <-chan os.Signal           // default SIGINT/SIGTERM
-	NetworkInfo func() *status.NetworkInfo // default: pi-helper's env file, read on each use
-	Logger      *log.Logger                // default log.Default()
+	Now     func() time.Time // default time.Now
+	Tick    <-chan time.Time // default time.NewTicker(Poll).C
+	Signals <-chan os.Signal // default SIGINT/SIGTERM
+	// NetworkInfo defaults to pi-helper's env file, read on each call. It is
+	// called every few seconds (networkRefreshEvery) on the poll goroutine,
+	// before the GPIO read, as well as at each heartbeat, so it must be cheap
+	// and non-blocking: a slow source delays polling and skews debounce.
+	NetworkInfo func() *status.NetworkInfo
+	Logger      *log.Logger // default log.Default()
 }
 
 // Run publishes the startup event, then drives the poll/debounce/publish loop
@@ -117,6 +121,10 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 	detector := logic.NewProfileDetector(prof, cfg.Debounce, startTime)
 	keys := prof.Keys()
 	prevNet := startNet
+	// The refresh interval is measured with t.Sub, which uses the monotonic
+	// reading time.Now carries, so a wall-clock jump at boot (fake-hwclock,
+	// NTP on a Pi with no RTC) can't stall it. Keep it that way: don't strip
+	// the monotonic reading (Round(0), UTC()) from now().
 	lastNetRefresh := startTime
 	var readyHeartbeatSent bool
 
