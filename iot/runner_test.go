@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -341,11 +342,13 @@ type statusJSON struct {
 }
 
 func TestRunHeartbeatIncludesNetworkInfo(t *testing.T) {
-	t.Setenv(envNetworkStatus, "connected")
-	t.Setenv(envNetworkType, "wifi")
-	t.Setenv(envNetworkIP, "192.168.1.42")
-	t.Setenv(envNetworkWifiStatus, "associated")
-	t.Setenv(envNetworkWifiSSID, "HomeNet")
+	// The default source is pi-helper's file, read at heartbeat time; the
+	// stale environment copied at process start must not win.
+	path := filepath.Join(t.TempDir(), "pi-helper.env")
+	usePiHelperFile(t, path)
+	writeFile(t, path, "NETWORK_STATUS=connected\nNETWORK_TYPE=wifi\nNETWORK_IP=192.168.1.42\nNETWORK_WIFI_STATUS=associated\nNETWORK_WIFI_SSID=HomeNet\n")
+	t.Setenv(envNetworkStatus, "disconnected")
+	t.Setenv(envNetworkIP, "")
 
 	pub := newPub()
 	tr := status.NewTrackerForProfile(boilerTestProfile(), time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), status.Config{})
@@ -358,7 +361,7 @@ func TestRunHeartbeatIncludesNetworkInfo(t *testing.T) {
 		errCh <- Run(RunConfig{
 			Profile: boilerTestProfile(), Reader: newReader(repeat(chhw{}, 4)), Publisher: pub, Tracker: tr,
 			Debounce: 10 * time.Minute, Heartbeat: 15 * time.Minute,
-			Now: clock, Tick: tickCh, Signals: sigCh, // NetworkInfo defaults to ReadNetworkInfoFromEnv
+			Now: clock, Tick: tickCh, Signals: sigCh, // NetworkInfo defaults to ReadNetworkInfo
 		})
 	}()
 	for i := 0; i < 4; i++ {

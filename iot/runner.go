@@ -48,7 +48,7 @@ type RunConfig struct {
 	Now         func() time.Time           // default time.Now
 	Tick        <-chan time.Time           // default time.NewTicker(Poll).C
 	Signals     <-chan os.Signal           // default SIGINT/SIGTERM
-	NetworkInfo func() *status.NetworkInfo // default ReadNetworkInfoFromEnv
+	NetworkInfo func() *status.NetworkInfo // default ReadNetworkInfo
 	Logger      *log.Logger                // default log.Default()
 }
 
@@ -66,7 +66,7 @@ func Run(cfg RunConfig) error {
 	}
 	netInfo := cfg.NetworkInfo
 	if netInfo == nil {
-		netInfo = ReadNetworkInfoFromEnv
+		netInfo = ReadNetworkInfo
 	}
 
 	sig := cfg.Signals
@@ -225,8 +225,8 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 
 				hbEvent := mqtt.SystemEvent{Timestamp: hbData.Timestamp, Event: "HEARTBEAT", Retained: true}
 				if tracker != nil {
-					if nn := netInfo(); nn != nil {
-						tracker.SetNetwork(nn)
+					if n != nil {
+						tracker.SetNetwork(n)
 					}
 					syncTracker()
 					snap := tracker.Snapshot()
@@ -276,8 +276,9 @@ const (
 )
 
 // ReadNetworkInfoFromEnv reads pi-helper's NETWORK_* environment variables into
-// a status.NetworkInfo, returning nil when NETWORK_STATUS is unset. It is the
-// default RunConfig.NetworkInfo source.
+// a status.NetworkInfo, returning nil when NETWORK_STATUS is unset. These are
+// fixed for the life of the process, so ReadNetworkInfo only falls back to
+// them when pi-helper's env file cannot be read.
 func ReadNetworkInfoFromEnv() *status.NetworkInfo {
 	s := os.Getenv(envNetworkStatus)
 	if s == "" {
