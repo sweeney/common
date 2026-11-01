@@ -85,8 +85,11 @@ func Run(cfg RunConfig) error {
 	}
 
 	// Publish the startup event with a full status snapshot, before the loop.
+	// This first network reading is also what the first scheduled heartbeat
+	// compares against, so a change during boot is logged.
+	startNet := netInfo()
 	if cfg.Tracker != nil {
-		cfg.Tracker.SetNetwork(netInfo())
+		cfg.Tracker.SetNetwork(startNet)
 		snap := cfg.Tracker.Snapshot()
 		startup := mqtt.SystemEvent{
 			Timestamp:  snap.Now,
@@ -102,10 +105,10 @@ func Run(cfg RunConfig) error {
 
 	logger.Printf("started: poll=%v debounce=%v heartbeat=%v", cfg.Poll, cfg.Debounce, cfg.Heartbeat)
 
-	return loop(cfg, now, netInfo, logger, tick, sig)
+	return loop(cfg, now, netInfo, startNet, logger, tick, sig)
 }
 
-func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInfo, logger *log.Logger, tick <-chan time.Time, sig <-chan os.Signal) error {
+func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInfo, startNet *status.NetworkInfo, logger *log.Logger, tick <-chan time.Time, sig <-chan os.Signal) error {
 	prof := cfg.Profile
 	tracker := cfg.Tracker
 	publisher := cfg.Publisher
@@ -113,8 +116,8 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 	startTime := now()
 	detector := logic.NewProfileDetector(prof, cfg.Debounce, startTime)
 	keys := prof.Keys()
-	var prevNet *status.NetworkInfo
-	var havePrevNet bool
+	prevNet := startNet
+	lastNetRefresh := startTime
 	var readyHeartbeatSent bool
 
 	// syncTracker pushes the detector's current state into the tracker for the
@@ -152,6 +155,16 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 
 		case <-tick:
 			t := now()
+
+			// Keep the tracker's network fresh between heartbeats, for the
+			// HTTP/LED consumers: after a boot the WiFi typically comes up
+			// seconds after the first reading. Rate-limited so a short Poll
+			// doesn't mean a file read per poll. Doesn't touch prevNet, so the
+			// heartbeat change log still compares heartbeat to heartbeat.
+			if tracker != nil && t.Sub(lastNetRefresh) >= networkRefreshEvery {
+				tracker.SetNetwork(netInfo())
+				lastNetRefresh = t
+			}
 			vals, err := cfg.Reader.ReadChannels()
 			if err != nil {
 				logger.Printf("gpio read error: %v", err)
@@ -215,15 +228,13 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 				// Detect network state changes since the last heartbeat. No
 				// info (nil) counts as "unavailable", so losing or regaining
 				// pi-helper's file is logged too.
-				if havePrevNet {
-					if was, cur := netStatus(prevNet), netStatus(n); was != cur {
-						logger.Printf("network: status changed since last heartbeat: %s → %s", was, cur)
-					}
-					if was, cur := netWifiStatus(prevNet), netWifiStatus(n); was != cur {
-						logger.Printf("network: wifi status changed since last heartbeat: %s → %s", was, cur)
-					}
+				if was, cur := netStatus(prevNet), netStatus(n); was != cur {
+					logger.Printf("network: status changed since last heartbeat: %s → %s", was, cur)
 				}
-				prevNet, havePrevNet = n, true
+				if was, cur := netWifiStatus(prevNet), netWifiStatus(n); was != cur {
+					logger.Printf("network: wifi status changed since last heartbeat: %s → %s", was, cur)
+				}
+				prevNet = n
 
 				hbEvent := mqtt.SystemEvent{Timestamp: hbData.Timestamp, Event: "HEARTBEAT", Retained: true}
 				if tracker != nil {
@@ -245,6 +256,10 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 		}
 	}
 }
+
+// networkRefreshEvery is how often the loop re-reads the network into the
+// tracker between heartbeats.
+const networkRefreshEvery = 5 * time.Second
 
 // countsSuffix renders the per-channel event counts for the heartbeat log line,
 // in profile order: " ch_on=1 ch_off=1 hw_on=1 hw_off=0".

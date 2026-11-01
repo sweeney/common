@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -353,9 +354,12 @@ type statusJSON struct {
 //
 // Timing (heartbeat every 15m, clock +5m per Now() call): tick 3 sends the
 // ready HEARTBEAT and the first scheduled one, then every third tick sends
-// another. Ticks in between never read the network, and an unbuffered tick
-// send returns only once Run has finished the tick before it, so changing the
-// file after sending tick 4 (or 7) is deterministic.
+// another. An unbuffered tick send returns only once Run has finished the tick
+// before it, so after sending tick 4 (or 7) the previous heartbeat is done and
+// the next one (tick 6, or 9) will see the new file. Every tick also refreshes
+// the tracker (the clock steps past networkRefreshEvery each time), and tick 4's
+// refresh may see either file, but each heartbeat sets the tracker from its own
+// read before publishing, so the asserted payloads don't depend on it.
 func TestRunHeartbeatTracksNetworkChanges(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "pi-helper.env")
 	usePiHelperFile(t, path)
@@ -436,6 +440,100 @@ func TestRunHeartbeatTracksNetworkChanges(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "stale-env") {
 		t.Errorf("the stale environment leaked into the logs:\n%s", logs.String())
+	}
+}
+
+// switchableNet is a RunConfig.NetworkInfo whose answer a test changes while
+// Run is going. It counts its calls.
+type switchableNet struct {
+	cur   atomic.Pointer[status.NetworkInfo]
+	calls atomic.Int64
+}
+
+func (s *switchableNet) read() *status.NetworkInfo {
+	s.calls.Add(1)
+	return s.cur.Load()
+}
+
+// The status page and LED read the tracker, so its network must follow the
+// source between heartbeats, but without a read on every poll.
+func TestRunRefreshesTrackerNetworkBetweenHeartbeats(t *testing.T) {
+	src := &switchableNet{}
+	src.cur.Store(&status.NetworkInfo{Status: "disconnected"})
+	pub := newPub()
+	tr := status.NewTrackerForProfile(boilerTestProfile(), time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), status.Config{})
+
+	tickCh := make(chan time.Time)
+	sigCh := make(chan os.Signal, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Run(RunConfig{
+			Profile: boilerTestProfile(), Reader: newReader(repeat(chhw{}, 400)), Publisher: pub, Tracker: tr,
+			Debounce: time.Second, Heartbeat: time.Hour, // no scheduled heartbeat in this test
+			Now: clk(), Tick: tickCh, Signals: sigCh, NetworkInfo: src.read, // clock +100ms per call
+		})
+	}()
+	tick := func(n int) {
+		for i := 0; i < n; i++ {
+			tickCh <- time.Time{}
+		}
+	}
+
+	tick(30) // baselined, ready heartbeat sent
+	src.cur.Store(&status.NetworkInfo{Status: "connected", IP: "192.168.1.50"})
+	tick(150) // well over networkRefreshEvery of clock time; the last tick sent is still running
+	if n := tr.Snapshot().Network; n == nil || n.Status != "connected" {
+		t.Errorf("tracker network between heartbeats: got %+v, want connected", n)
+	}
+
+	sigCh <- syscall.SIGTERM
+	if err := <-errCh; err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	// 180 ticks of at least 100ms each: a read per poll would be 180 calls. At
+	// most one per 5s of clock time is about 4, plus startup and ready.
+	if c := src.calls.Load(); c < 3 || c > 10 {
+		t.Errorf("NetworkInfo called %d times over 180 polls; want a handful (rate-limited)", c)
+	}
+}
+
+// After a boot the first reading is "disconnected" and the WiFi is up by the
+// first scheduled heartbeat. That change must be logged: the startup reading
+// is what the first heartbeat compares against.
+func TestRunLogsNetworkChangeDuringBoot(t *testing.T) {
+	src := &switchableNet{}
+	src.cur.Store(&status.NetworkInfo{Status: "disconnected", WifiStatus: "disconnected"})
+	var logs bytes.Buffer
+
+	tickCh := make(chan time.Time)
+	sigCh := make(chan os.Signal, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Run(RunConfig{
+			Profile: boilerTestProfile(), Reader: newReader(repeat(chhw{}, 10)), Publisher: newPub(),
+			Tracker:  status.NewTrackerForProfile(boilerTestProfile(), time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), status.Config{}),
+			Debounce: 10 * time.Minute, Heartbeat: 15 * time.Minute,
+			Now:  fakeClock(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), 5*time.Minute),
+			Tick: tickCh, Signals: sigCh, NetworkInfo: src.read, Logger: log.New(&logs, "", 0),
+		})
+	}()
+	tickCh <- time.Time{}
+	tickCh <- time.Time{} // tick 1 done; the first scheduled heartbeat is tick 3
+	src.cur.Store(&status.NetworkInfo{Status: "connected", WifiStatus: "connected", IP: "192.168.1.50"})
+	tickCh <- time.Time{}
+	tickCh <- time.Time{}
+	sigCh <- syscall.SIGTERM
+	if err := <-errCh; err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	for _, line := range []string{
+		"network: status changed since last heartbeat: disconnected → connected",
+		"network: wifi status changed since last heartbeat: disconnected → connected",
+	} {
+		if !strings.Contains(logs.String(), line) {
+			t.Errorf("log missing %q; got:\n%s", line, logs.String())
+		}
 	}
 }
 
