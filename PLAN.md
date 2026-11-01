@@ -99,7 +99,8 @@ work.
 3. **Daemon lifecycle and `/healthz` (`lifecycle`, `health`).** Built
    locally for tanktemp (DS18B20 hot water probes), the third Pi daemon.
    `lifecycle` is the runtime pulled out of `iot.Run`; `iot` gets
-   rebuilt on it in `iot/v0.2.0`, with its tests and boiler-sensor's goldens
+   rebuilt on it in `iot/v0.3.0` (`v0.2.0` went to exporting
+   `ReadNetworkInfo` for boiler-sensor's status page), with its tests and boiler-sensor's goldens
    unchanged. `health` is the `/healthz` that boiler-sensor and
    pi-price-screen each copy. Both were tagged on 2026-11-01
    (`lifecycle/v0.1.0`, `health/v0.1.0`; sweeney/common#8), after tanktemp

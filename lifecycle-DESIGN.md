@@ -29,7 +29,7 @@ dependencies.
 ## Consumers and tags
 
 1. tanktemp, first, through a gitignored `go.work`.
-2. **`iot` rebuilt on it (`iot/v0.2.0`): not done. Tried against `iot`'s tests
+2. **`iot` rebuilt on it (`iot/v0.3.0`): not done. Tried against `iot`'s tests
    on 2026-10-31, and two incompatibilities are now known:**
    - **Skipped ticks.** `iot`'s `runScenario` sends ticks back to back on an
      unbuffered channel and expects each to run one poll. With the work in

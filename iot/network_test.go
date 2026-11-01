@@ -8,7 +8,7 @@ import (
 	"github.com/sweeney/common/iot/status"
 )
 
-// usePiHelperFile points readNetworkInfo at path for the rest of the test.
+// usePiHelperFile points ReadNetworkInfo at path for the rest of the test.
 func usePiHelperFile(t *testing.T, path string) {
 	t.Helper()
 	old := piHelperEnvPath
@@ -79,7 +79,7 @@ func TestParsePiHelperEnvNoStatusIsNil(t *testing.T) {
 
 // The regression: the network was read once, at process start, from an
 // environment systemd had copied from the file before the WiFi was up, and
-// stayed "disconnected" for the life of the process. readNetworkInfo must see
+// stayed "disconnected" for the life of the process. ReadNetworkInfo must see
 // each rewrite of the file, and prefer the file to a stale environment.
 func TestReadNetworkInfoRereadsFileOnEveryCall(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "pi-helper.env")
@@ -87,12 +87,12 @@ func TestReadNetworkInfoRereadsFileOnEveryCall(t *testing.T) {
 	t.Setenv(envNetworkStatus, "disconnected") // the stale copy systemd made at start
 
 	writeFile(t, path, disconnectedEnvFile)
-	if got := readNetworkInfo(); got == nil || got.Status != "disconnected" {
+	if got := ReadNetworkInfo(); got == nil || got.Status != "disconnected" {
 		t.Fatalf("before WiFi is up: got %+v", got)
 	}
 
 	writeFile(t, path, connectedEnvFile)
-	if got := readNetworkInfo(); got == nil || *got != connectedInfo {
+	if got := ReadNetworkInfo(); got == nil || *got != connectedInfo {
 		t.Fatalf("after pi-helper rewrote the file: got %+v, want %+v", got, connectedInfo)
 	}
 }
@@ -103,7 +103,7 @@ func TestReadNetworkInfoFileWithoutStatusIsNil(t *testing.T) {
 	t.Setenv(envNetworkStatus, "connected")
 
 	writeFile(t, path, "NETWORK_HOST=pi\n")
-	if got := readNetworkInfo(); got != nil {
+	if got := ReadNetworkInfo(); got != nil {
 		t.Errorf("readable file without NETWORK_STATUS: got %+v, want nil", got)
 	}
 }
@@ -114,14 +114,14 @@ func TestReadNetworkInfoFallsBackToEnvWhenFileMissing(t *testing.T) {
 	t.Setenv(envNetworkStatus, "connected")
 	t.Setenv(envNetworkIP, "10.0.0.9")
 
-	got := readNetworkInfo()
+	got := ReadNetworkInfo()
 	want := status.NetworkInfo{Status: "connected", IP: "10.0.0.9"}
 	if got == nil || *got != want {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 
 	t.Setenv(envNetworkStatus, "")
-	if got := readNetworkInfo(); got != nil {
+	if got := ReadNetworkInfo(); got != nil {
 		t.Errorf("no file and no env: got %+v, want nil", got)
 	}
 }

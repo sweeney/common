@@ -49,7 +49,7 @@ type RunConfig struct {
 	Now         func() time.Time           // default time.Now
 	Tick        <-chan time.Time           // default time.NewTicker(Poll).C
 	Signals     <-chan os.Signal           // default SIGINT/SIGTERM
-	NetworkInfo func() *status.NetworkInfo // default: pi-helper's env file, read on each use
+	NetworkInfo func() *status.NetworkInfo // default ReadNetworkInfo
 	Logger      *log.Logger                // default log.Default()
 }
 
@@ -67,7 +67,7 @@ func Run(cfg RunConfig) error {
 	}
 	netInfo := cfg.NetworkInfo
 	if netInfo == nil {
-		netInfo = readNetworkInfo
+		netInfo = ReadNetworkInfo
 	}
 
 	sig := cfg.Signals

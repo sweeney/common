@@ -19,14 +19,16 @@ const (
 	envNetworkWifiSSID   = "NETWORK_WIFI_SSID"
 )
 
-// piHelperEnvPath is the file readNetworkInfo reads. pi-helper rewrites it
+// piHelperEnvPath is the file ReadNetworkInfo reads. pi-helper rewrites it
 // whenever the network state changes. Tests point it elsewhere.
 var piHelperEnvPath = "/run/pi-helper.env"
 
-// readNetworkInfo is the default RunConfig.NetworkInfo. It reads pi-helper's
+// ReadNetworkInfo is the default RunConfig.NetworkInfo. It reads pi-helper's
 // env file afresh on every call, so the status reflects the network as it is
 // now. systemd's EnvironmentFile= is read only once, at start, and at boot that
-// is often before the WiFi is up.
+// is often before the WiFi is up. Status pages call it per request too, since
+// the tracker's copy only changes at heartbeats. Each call is one small read
+// of a tmpfs file.
 //
 // If the file cannot be read, it falls back to the process environment
 // (ReadNetworkInfoFromEnv). A readable file is authoritative: if it has no
@@ -34,7 +36,7 @@ var piHelperEnvPath = "/run/pi-helper.env"
 //
 // It relies on pi-helper replacing the file atomically (temp file + rename),
 // which it does, so a read never sees a half-written file.
-func readNetworkInfo() *status.NetworkInfo {
+func ReadNetworkInfo() *status.NetworkInfo {
 	data, err := os.ReadFile(piHelperEnvPath)
 	if err != nil {
 		return ReadNetworkInfoFromEnv()

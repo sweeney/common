@@ -376,7 +376,7 @@ func TestRunHeartbeatTracksNetworkChanges(t *testing.T) {
 			Profile: boilerTestProfile(), Reader: newReader(repeat(chhw{}, 20)), Publisher: pub, Tracker: tr,
 			Debounce: 10 * time.Minute, Heartbeat: 15 * time.Minute,
 			Now: clock, Tick: tickCh, Signals: sigCh, Logger: log.New(&logs, "", 0),
-			// NetworkInfo left nil: the default, readNetworkInfo, is under test.
+			// NetworkInfo left nil: the default, ReadNetworkInfo, is under test.
 		})
 	}()
 	tick := func(n int) {
