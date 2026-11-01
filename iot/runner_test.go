@@ -1,11 +1,14 @@
 package iot
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -341,56 +344,98 @@ type statusJSON struct {
 	} `json:"status"`
 }
 
-func TestRunHeartbeatIncludesNetworkInfo(t *testing.T) {
-	// The default source is pi-helper's file, read at heartbeat time; the
-	// stale environment copied at process start must not win.
+// TestRunHeartbeatTracksNetworkChanges drives the default network source
+// through Run while pi-helper's file changes, as it does at boot: the WiFi
+// comes up after the sensor has started, and later the file goes away. Each
+// scheduled HEARTBEAT must publish the file as it is then, the stale
+// environment copied at process start must never win, and each change must be
+// logged.
+//
+// Timing (heartbeat every 15m, clock +5m per Now() call): tick 3 sends the
+// ready HEARTBEAT and the first scheduled one, then every third tick sends
+// another. Ticks in between never read the network, and an unbuffered tick
+// send returns only once Run has finished the tick before it, so changing the
+// file after sending tick 4 (or 7) is deterministic.
+func TestRunHeartbeatTracksNetworkChanges(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "pi-helper.env")
 	usePiHelperFile(t, path)
-	writeFile(t, path, "NETWORK_STATUS=connected\nNETWORK_TYPE=wifi\nNETWORK_IP=192.168.1.42\nNETWORK_WIFI_STATUS=associated\nNETWORK_WIFI_SSID=HomeNet\n")
-	t.Setenv(envNetworkStatus, "disconnected")
-	t.Setenv(envNetworkIP, "")
+	clearNetworkEnv(t)
+	t.Setenv(envNetworkStatus, "stale-env")
+	writeFile(t, path, disconnectedEnvFile)
 
 	pub := newPub()
 	tr := status.NewTrackerForProfile(boilerTestProfile(), time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), status.Config{})
 	clock := fakeClock(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), 5*time.Minute)
+	var logs bytes.Buffer
 
 	tickCh := make(chan time.Time)
 	sigCh := make(chan os.Signal, 1)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- Run(RunConfig{
-			Profile: boilerTestProfile(), Reader: newReader(repeat(chhw{}, 4)), Publisher: pub, Tracker: tr,
+			Profile: boilerTestProfile(), Reader: newReader(repeat(chhw{}, 20)), Publisher: pub, Tracker: tr,
 			Debounce: 10 * time.Minute, Heartbeat: 15 * time.Minute,
-			Now: clock, Tick: tickCh, Signals: sigCh, // NetworkInfo defaults to ReadNetworkInfo
+			Now: clock, Tick: tickCh, Signals: sigCh, Logger: log.New(&logs, "", 0),
+			// NetworkInfo left nil: the default, readNetworkInfo, is under test.
 		})
 	}()
-	for i := 0; i < 4; i++ {
-		tickCh <- time.Time{}
+	tick := func(n int) {
+		for i := 0; i < n; i++ {
+			tickCh <- time.Time{}
+		}
 	}
+	tick(4) // ready + first scheduled HEARTBEAT (tick 3) read "disconnected"
+	writeFile(t, path, connectedEnvFile)
+	tick(3) // second scheduled HEARTBEAT (tick 6) reads "connected"
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(envNetworkStatus, "") // no file, no env: no network info at all
+	tick(3)                        // third scheduled HEARTBEAT (tick 9) has none
 	sigCh <- syscall.SIGTERM
 	if err := <-errCh; err != nil {
 		t.Fatalf("Run error: %v", err)
 	}
 
-	var hbPayload []byte
+	var got []string
 	for i, se := range pub.SystemEvents {
-		if se.Event == "HEARTBEAT" {
-			hbPayload = pub.SystemPayloads[i]
-			break
+		var parsed statusJSON
+		if err := json.Unmarshal(pub.SystemPayloads[i], &parsed); err != nil {
+			t.Fatalf("%s: invalid JSON: %v", se.Event, err)
+		}
+		net := "none"
+		if n := parsed.Status.Network; n != nil {
+			net = n.Status + "/" + n.IP
+		}
+		got = append(got, se.Event+" "+net)
+	}
+	want := []string{
+		"STARTUP disconnected/",
+		"HEARTBEAT disconnected/", // ready
+		"HEARTBEAT disconnected/", // scheduled, tick 3
+		"HEARTBEAT connected/192.168.1.50",
+		"HEARTBEAT none",
+		"SHUTDOWN none",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("system events:\n got  %q\n want %q", got, want)
+	}
+
+	for _, line := range []string{
+		"net=disconnected/ ",
+		"net=connected/192.168.1.50 (wifi=connected ssid=HomeNet)",
+		"network: status changed since last heartbeat: disconnected → connected",
+		"network: wifi status changed since last heartbeat: disconnected → connected",
+		"net=unavailable ",
+		"network: status changed since last heartbeat: connected → unavailable",
+		"network: wifi status changed since last heartbeat: connected → unavailable",
+	} {
+		if !strings.Contains(logs.String(), line) {
+			t.Errorf("log missing %q; got:\n%s", line, logs.String())
 		}
 	}
-	if hbPayload == nil {
-		t.Fatal("expected a HEARTBEAT system event")
-	}
-	var parsed statusJSON
-	if err := json.Unmarshal(hbPayload, &parsed); err != nil {
-		t.Fatalf("invalid HEARTBEAT JSON: %v", err)
-	}
-	if parsed.Status.Network == nil {
-		t.Fatal("HEARTBEAT payload missing network info")
-	}
-	if parsed.Status.Network.Status != "connected" || parsed.Status.Network.Type != "wifi" || parsed.Status.Network.IP != "192.168.1.42" {
-		t.Errorf("unexpected network info: %+v", parsed.Status.Network)
+	if strings.Contains(logs.String(), "stale-env") {
+		t.Errorf("the stale environment leaked into the logs:\n%s", logs.String())
 	}
 }
 

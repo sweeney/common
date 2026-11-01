@@ -34,7 +34,8 @@ type Publisher interface {
 
 // RunConfig wires the runtime. Profile, Reader, Publisher and Tracker are
 // required. The injection points default to production behaviour (a real
-// ticker from Poll, OS SIGINT/SIGTERM, env-based network info, the std logger),
+// ticker from Poll, OS SIGINT/SIGTERM, network info read from pi-helper's env
+// file on each use (falling back to the environment), the std logger),
 // so daemons set only Poll; tests override Tick/Signals/Now for determinism.
 type RunConfig struct {
 	Profile   profile.SensorProfile
@@ -48,7 +49,7 @@ type RunConfig struct {
 	Now         func() time.Time           // default time.Now
 	Tick        <-chan time.Time           // default time.NewTicker(Poll).C
 	Signals     <-chan os.Signal           // default SIGINT/SIGTERM
-	NetworkInfo func() *status.NetworkInfo // default ReadNetworkInfo
+	NetworkInfo func() *status.NetworkInfo // default: pi-helper's env file, read on each use
 	Logger      *log.Logger                // default log.Default()
 }
 
@@ -66,7 +67,7 @@ func Run(cfg RunConfig) error {
 	}
 	netInfo := cfg.NetworkInfo
 	if netInfo == nil {
-		netInfo = ReadNetworkInfo
+		netInfo = readNetworkInfo
 	}
 
 	sig := cfg.Signals
@@ -85,9 +86,7 @@ func Run(cfg RunConfig) error {
 
 	// Publish the startup event with a full status snapshot, before the loop.
 	if cfg.Tracker != nil {
-		if n := netInfo(); n != nil {
-			cfg.Tracker.SetNetwork(n)
-		}
+		cfg.Tracker.SetNetwork(netInfo())
 		snap := cfg.Tracker.Snapshot()
 		startup := mqtt.SystemEvent{
 			Timestamp:  snap.Now,
@@ -115,6 +114,7 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 	detector := logic.NewProfileDetector(prof, cfg.Debounce, startTime)
 	keys := prof.Keys()
 	var prevNet *status.NetworkInfo
+	var havePrevNet bool
 	var readyHeartbeatSent bool
 
 	// syncTracker pushes the detector's current state into the tracker for the
@@ -184,9 +184,7 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 				logger.Printf("baseline established, publishing ready heartbeat")
 				hbEvent := mqtt.SystemEvent{Timestamp: t, Event: "HEARTBEAT", Retained: true}
 				if tracker != nil {
-					if n := netInfo(); n != nil {
-						tracker.SetNetwork(n)
-					}
+					tracker.SetNetwork(netInfo())
 					syncTracker()
 					snap := tracker.Snapshot()
 					snap.Now = t
@@ -214,20 +212,24 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 				}
 				logger.Printf("heartbeat: uptime=%v mqtt=%s net=%s%s", hbData.Uptime, mqttUp, netDesc, countsSuffix(prof, hbData.Counts))
 
-				// Detect network state changes since the last heartbeat.
-				if prevNet != nil && n != nil && prevNet.Status != n.Status {
-					logger.Printf("network: status changed since last heartbeat: %s → %s", prevNet.Status, n.Status)
+				// Detect network state changes since the last heartbeat. No
+				// info (nil) counts as "unavailable", so losing or regaining
+				// pi-helper's file is logged too.
+				if havePrevNet {
+					if was, now := netStatus(prevNet), netStatus(n); was != now {
+						logger.Printf("network: status changed since last heartbeat: %s → %s", was, now)
+					}
+					if was, now := netWifiStatus(prevNet), netWifiStatus(n); was != now {
+						logger.Printf("network: wifi status changed since last heartbeat: %s → %s", was, now)
+					}
 				}
-				if prevNet != nil && n != nil && prevNet.WifiStatus != n.WifiStatus {
-					logger.Printf("network: wifi status changed since last heartbeat: %s → %s", prevNet.WifiStatus, n.WifiStatus)
-				}
-				prevNet = n
+				prevNet, havePrevNet = n, true
 
 				hbEvent := mqtt.SystemEvent{Timestamp: hbData.Timestamp, Event: "HEARTBEAT", Retained: true}
 				if tracker != nil {
-					if n != nil {
-						tracker.SetNetwork(n)
-					}
+					// Publish what was just read, nil included, so the payload
+					// never advertises a network the log line says is gone.
+					tracker.SetNetwork(n)
 					syncTracker()
 					snap := tracker.Snapshot()
 					snap.Now = hbData.Timestamp
@@ -262,34 +264,5 @@ func signalName(s os.Signal) string {
 		return "SIGTERM"
 	default:
 		return "UNKNOWN"
-	}
-}
-
-// pi-helper env var names (written to /run/pi-helper.env on the user's Pis).
-const (
-	envNetworkType       = "NETWORK_TYPE"
-	envNetworkIP         = "NETWORK_IP"
-	envNetworkStatus     = "NETWORK_STATUS"
-	envNetworkGateway    = "NETWORK_GATEWAY"
-	envNetworkWifiStatus = "NETWORK_WIFI_STATUS"
-	envNetworkWifiSSID   = "NETWORK_WIFI_SSID"
-)
-
-// ReadNetworkInfoFromEnv reads pi-helper's NETWORK_* environment variables into
-// a status.NetworkInfo, returning nil when NETWORK_STATUS is unset. These are
-// fixed for the life of the process, so ReadNetworkInfo only falls back to
-// them when pi-helper's env file cannot be read.
-func ReadNetworkInfoFromEnv() *status.NetworkInfo {
-	s := os.Getenv(envNetworkStatus)
-	if s == "" {
-		return nil
-	}
-	return &status.NetworkInfo{
-		Type:       os.Getenv(envNetworkType),
-		IP:         os.Getenv(envNetworkIP),
-		Status:     s,
-		Gateway:    os.Getenv(envNetworkGateway),
-		WifiStatus: os.Getenv(envNetworkWifiStatus),
-		SSID:       os.Getenv(envNetworkWifiSSID),
 	}
 }

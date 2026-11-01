@@ -8,7 +8,7 @@ import (
 	"github.com/sweeney/common/iot/status"
 )
 
-// usePiHelperFile points ReadNetworkInfo at path for the rest of the test.
+// usePiHelperFile points readNetworkInfo at path for the rest of the test.
 func usePiHelperFile(t *testing.T, path string) {
 	t.Helper()
 	old := piHelperEnvPath
@@ -31,6 +31,7 @@ func clearNetworkEnv(t *testing.T) {
 	}
 }
 
+// As pi-helper writes it: sorted, unquoted KEY=value lines.
 const connectedEnvFile = `NETWORK_GATEWAY=192.168.1.1
 NETWORK_HOST=pi
 NETWORK_IP=192.168.1.50
@@ -40,22 +41,29 @@ NETWORK_WIFI_SSID=HomeNet
 NETWORK_WIFI_STATUS=connected
 `
 
+const disconnectedEnvFile = `NETWORK_HOST=pi
+NETWORK_STATUS=disconnected
+NETWORK_WIFI_STATUS=disconnected
+`
+
 var connectedInfo = status.NetworkInfo{
 	Type: "wifi", IP: "192.168.1.50", Status: "connected",
 	Gateway: "192.168.1.1", WifiStatus: "connected", SSID: "HomeNet",
 }
 
 func TestParsePiHelperEnv(t *testing.T) {
-	got := ParsePiHelperEnv([]byte(connectedEnvFile))
+	got := parsePiHelperEnv([]byte(connectedEnvFile))
 	if got == nil || *got != connectedInfo {
 		t.Errorf("got %+v, want %+v", got, connectedInfo)
 	}
 }
 
-func TestParsePiHelperEnvSkipsCommentsBlanksAndQuotes(t *testing.T) {
-	data := "# written by pi-helper\n\n  NETWORK_STATUS=\"connected\"  \nNETWORK_IP='10.0.0.2'\nnot a pair\nOTHER=x\n"
-	got := ParsePiHelperEnv([]byte(data))
-	want := status.NetworkInfo{Status: "connected", IP: "10.0.0.2"}
+// pi-helper does not quote, so the SSID (the one user-chosen value) must come
+// through exactly: quotes, apostrophes, "=", and leading/trailing spaces.
+func TestParsePiHelperEnvTakesValuesVerbatim(t *testing.T) {
+	data := "\nNETWORK_STATUS=connected\nnot a pair\nOTHER=x\nNETWORK_WIFI_SSID= Dad's \"Net\" = 2 \n"
+	got := parsePiHelperEnv([]byte(data))
+	want := status.NetworkInfo{Status: "connected", SSID: ` Dad's "Net" = 2 `}
 	if got == nil || *got != want {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -63,28 +71,28 @@ func TestParsePiHelperEnvSkipsCommentsBlanksAndQuotes(t *testing.T) {
 
 func TestParsePiHelperEnvNoStatusIsNil(t *testing.T) {
 	for _, data := range []string{"", "NETWORK_IP=10.0.0.2\n", "NETWORK_STATUS=\n"} {
-		if got := ParsePiHelperEnv([]byte(data)); got != nil {
-			t.Errorf("ParsePiHelperEnv(%q) = %+v, want nil", data, got)
+		if got := parsePiHelperEnv([]byte(data)); got != nil {
+			t.Errorf("parsePiHelperEnv(%q) = %+v, want nil", data, got)
 		}
 	}
 }
 
 // The regression: the network was read once, at process start, from an
 // environment systemd had copied from the file before the WiFi was up, and
-// stayed "disconnected" for the life of the process. ReadNetworkInfo must see
+// stayed "disconnected" for the life of the process. readNetworkInfo must see
 // each rewrite of the file, and prefer the file to a stale environment.
 func TestReadNetworkInfoRereadsFileOnEveryCall(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "pi-helper.env")
 	usePiHelperFile(t, path)
 	t.Setenv(envNetworkStatus, "disconnected") // the stale copy systemd made at start
 
-	writeFile(t, path, "NETWORK_STATUS=disconnected\nNETWORK_WIFI_STATUS=disconnected\n")
-	if got := ReadNetworkInfo(); got == nil || got.Status != "disconnected" {
+	writeFile(t, path, disconnectedEnvFile)
+	if got := readNetworkInfo(); got == nil || got.Status != "disconnected" {
 		t.Fatalf("before WiFi is up: got %+v", got)
 	}
 
 	writeFile(t, path, connectedEnvFile)
-	if got := ReadNetworkInfo(); got == nil || *got != connectedInfo {
+	if got := readNetworkInfo(); got == nil || *got != connectedInfo {
 		t.Fatalf("after pi-helper rewrote the file: got %+v, want %+v", got, connectedInfo)
 	}
 }
@@ -95,7 +103,7 @@ func TestReadNetworkInfoFileWithoutStatusIsNil(t *testing.T) {
 	t.Setenv(envNetworkStatus, "connected")
 
 	writeFile(t, path, "NETWORK_HOST=pi\n")
-	if got := ReadNetworkInfo(); got != nil {
+	if got := readNetworkInfo(); got != nil {
 		t.Errorf("readable file without NETWORK_STATUS: got %+v, want nil", got)
 	}
 }
@@ -106,20 +114,30 @@ func TestReadNetworkInfoFallsBackToEnvWhenFileMissing(t *testing.T) {
 	t.Setenv(envNetworkStatus, "connected")
 	t.Setenv(envNetworkIP, "10.0.0.9")
 
-	got := ReadNetworkInfo()
+	got := readNetworkInfo()
 	want := status.NetworkInfo{Status: "connected", IP: "10.0.0.9"}
 	if got == nil || *got != want {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 
 	t.Setenv(envNetworkStatus, "")
-	if got := ReadNetworkInfo(); got != nil {
+	if got := readNetworkInfo(); got != nil {
 		t.Errorf("no file and no env: got %+v, want nil", got)
 	}
 }
 
+func TestNetStatusNames(t *testing.T) {
+	if netStatus(nil) != "unavailable" || netWifiStatus(nil) != "unavailable" {
+		t.Errorf("nil: got %q / %q", netStatus(nil), netWifiStatus(nil))
+	}
+	if netStatus(&connectedInfo) != "connected" || netWifiStatus(&connectedInfo) != "connected" {
+		t.Errorf("connected: got %q / %q", netStatus(&connectedInfo), netWifiStatus(&connectedInfo))
+	}
+}
+
+// Also fails if a test forgets to restore the var.
 func TestPiHelperEnvPathDefault(t *testing.T) {
-	if PiHelperEnvPath != "/run/pi-helper.env" || piHelperEnvPath != PiHelperEnvPath {
-		t.Errorf("PiHelperEnvPath = %q, piHelperEnvPath = %q", PiHelperEnvPath, piHelperEnvPath)
+	if piHelperEnvPath != "/run/pi-helper.env" {
+		t.Errorf("piHelperEnvPath = %q", piHelperEnvPath)
 	}
 }
