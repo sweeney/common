@@ -19,9 +19,10 @@ only pulls the dependencies of the module it actually imports.
 | `backup` | `github.com/sweeney/common/backup` | **landed — `backup/v0.1.1`** (from identity/common) | AWS SDK (R2/S3), sqlite |
 | `web` | `github.com/sweeney/common/web` | **landed — `web/v0.2.1`** (from identity/common) | `x/time`, `yaml.v3` |
 | `remoteconfig` | `github.com/sweeney/common/remoteconfig` | **landed — `remoteconfig/v0.2.0`** (config.swee.net client; replaces the copies in statehouse, countinghouse, greenhouse, pi-price-screen) | stdlib only |
-| `devices` | `github.com/sweeney/common/devices` | **built, not tagged** (the `devices_<site>` schema; replaces the copies in statehouse, countinghouse, greenhouse) | stdlib only |
-| `lifecycle` | `github.com/sweeney/common/lifecycle` | **built locally, not tagged** (the daemon runtime from `iot.Run`: signals, STARTUP/ready/HEARTBEAT/SHUTDOWN, cancellable work; for tanktemp, then `iot`) | stdlib only |
-| `health` | `github.com/sweeney/common/health` | **built locally, not tagged** (the always-200 `/healthz` of boiler-sensor and pi-price-screen, plus `health/sysinfo`) | stdlib only |
+| `devices` | `github.com/sweeney/common/devices` | **landed — `devices/v0.2.0`** (the `devices_<site>` schema, with asset fields, `cylinder`, `part_of` and `telemetry`; replaces the copies in statehouse, countinghouse, greenhouse) | stdlib only |
+| `lifecycle` | `github.com/sweeney/common/lifecycle` | **landed — `lifecycle/v0.1.0`** (the daemon runtime from `iot.Run`: signals, STARTUP/ready/HEARTBEAT/SHUTDOWN, cancellable work; tanktemp runs on it, `iot` next) | stdlib only |
+| `health` | `github.com/sweeney/common/health` | **landed — `health/v0.1.0`** (the always-200 `/healthz` of boiler-sensor and pi-price-screen, plus `health/sysinfo`) | stdlib only |
+| `mqttpub` | `github.com/sweeney/common/mqttpub` | **landed — `mqttpub/v0.1.0`** (the MQTT publisher, retry and broker test helpers from ups-mqtt, with netmon's `Watch`; tanktemp runs on it; see [`mqttpub-DESIGN.md`](mqttpub-DESIGN.md)) | Paho MQTT only |
 
 `auth` stays in `github.com/sweeney/identity/common`, identity's own client library.
 

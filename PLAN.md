@@ -90,13 +90,20 @@ work.
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
    bridge). Extract once the two stop diverging.
 
+   **Module `mqttpub`, tagged `mqttpub/v0.1.0`** (2026-11-01,
+   sweeney/common#9): ups-mqtt's publisher, retry and `mqtttest`, with
+   netmon's `Watch` and `Options`, plus `Connected()` for `/healthz`.
+   tanktemp ran on it first (on its Pi since 2026-10-31), rather than
+   ups-mqtt as first planned. Next: ups-mqtt, then netmon, each in its own
+   session. See [`mqttpub-DESIGN.md`](mqttpub-DESIGN.md).
 3. **Daemon lifecycle and `/healthz` (`lifecycle`, `health`).** Built
    locally for tanktemp (DS18B20 hot water probes), the third Pi daemon.
    `lifecycle` is the runtime pulled out of `iot.Run`; `iot` gets
    rebuilt on it in `iot/v0.2.0`, with its tests and boiler-sensor's goldens
    unchanged. `health` is the `/healthz` that boiler-sensor and
-   pi-price-screen each copy. Both are tagged once tanktemp has run on them on
-   a Pi; boiler-sensor and pi-price-screen then move in their own sessions
+   pi-price-screen each copy. Both were tagged on 2026-11-01
+   (`lifecycle/v0.1.0`, `health/v0.1.0`; sweeney/common#8), after tanktemp
+   ran on them on its Pi; boiler-sensor and pi-price-screen move in their own sessions
    (sweeney/boiler-sensor#6, sweeney/pi-price-screen#3). See
    [lifecycle-DESIGN.md](lifecycle-DESIGN.md) and
    [health-DESIGN.md](health-DESIGN.md).
