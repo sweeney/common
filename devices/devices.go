@@ -64,6 +64,23 @@ type Device struct {
 	// EnvironmentFields are the environmental readings the device reports,
 	// e.g. "temperature_c".
 	EnvironmentFields []string `yaml:"environment_fields" json:"environment_fields,omitempty"`
+
+	// Asset facts (v0.2.0). Relayed as they are: no service derives a verdict
+	// from them.
+	Manufacturer string `yaml:"manufacturer" json:"manufacturer,omitempty"`
+	Model        string `yaml:"model"        json:"model,omitempty"`
+	Installed    Date   `yaml:"installed"    json:"installed,omitempty"`
+
+	// PartOf names the device this one is part of: a probe inside a
+	// cylinder or a fridge, a fridge's plug. One level only. See PlaceOf.
+	PartOf string `yaml:"part_of" json:"part_of,omitempty"`
+	// Telemetry false marks an entry that sends no readings itself (a
+	// cylinder, a fridge): its lack of an identity is deliberate. Absent
+	// means true. See SendsTelemetry.
+	Telemetry *bool `yaml:"telemetry" json:"telemetry,omitempty"`
+
+	// Cylinder holds a hot water cylinder's physical facts.
+	Cylinder *Cylinder `yaml:"cylinder" json:"cylinder,omitempty"`
 }
 
 // Thresholds are a device's activity-detection thresholds. Every field is a
@@ -196,4 +213,53 @@ func (d *Device) Normalise() {
 	if d.Display == "" && d.FriendlyName != "" {
 		d.Display = d.FriendlyName
 	}
+}
+
+// Date is a civil date, "YYYY-MM-DD", with no time zone. A value that isn't
+// one fails to decode, so Decode drops it as CodeBadValue.
+type Date string
+
+// UnmarshalJSON accepts only a real "YYYY-MM-DD" date.
+func (d *Date) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	if _, err := time.Parse(time.DateOnly, s); err != nil {
+		return fmt.Errorf("installed %q is not a YYYY-MM-DD date", s)
+	}
+	*d = Date(s)
+	return nil
+}
+
+// Cylinder is a hot water cylinder's physical facts, as declared (from its
+// label or datasheet). None is computed from the others. Pointers, so an
+// absent value is never read as zero.
+type Cylinder struct {
+	CapacityL  *float64 `yaml:"capacity_l"  json:"capacity_l,omitempty"`
+	HeightMM   *float64 `yaml:"height_mm"   json:"height_mm,omitempty"`
+	DiameterMM *float64 `yaml:"diameter_mm" json:"diameter_mm,omitempty"`
+}
+
+// SendsTelemetry reports whether the device sends readings: true unless its
+// entry says telemetry: false. Use it to leave things like a cylinder out of
+// liveness checks and device lists about readings.
+func (d Device) SendsTelemetry() bool { return d.Telemetry == nil || *d.Telemetry }
+
+// PlaceOf returns the room device id sits in: its own Place, else the Place
+// of the device it is PartOf, one level only. A probe inside a fridge needn't
+// repeat the fridge's room. Unknown ids, and a part_of chain, give "".
+func PlaceOf(m map[string]Device, id string) string {
+	d, ok := m[id]
+	if !ok {
+		return ""
+	}
+	if p := d.Place(); p != "" || d.PartOf == "" || d.PartOf == id {
+		return p
+	}
+	parent, ok := m[d.PartOf]
+	if !ok || parent.PartOf != "" {
+		return ""
+	}
+	return parent.Place()
 }

@@ -248,3 +248,47 @@ Each step is its own PR, deployed and verified before the next, as in phase 1.
 4. Out of scope unless you say otherwise: where each service gets its
    `devices_namespace` name (local YAML in statehouse and greenhouse, the
    `sites` namespace in countinghouse).
+
+
+## Follow-up (v0.2.0): assets, cylinders, `part_of`, `telemetry`
+
+Status: **built on a local branch (`feat/devices-assets`), not tagged, not
+pushed** (2026-10-31). It was designed with the user while planning
+tanktemp, a service for DS18B20 probes on hot water cylinders. The version
+rule from above applies: the keys go into a namespace only once statehouse
+has shipped reading them.
+
+**Generic, on every `Device`:** `manufacturer`, `model`, `installed` (a
+`Date`, `YYYY-MM-DD`, validated: `14/05/2019` or `2019-02-30` is
+`device.bad_value`).
+
+**`cylinder`**, a typed block decoded field by field like `thresholds`:
+`capacity_l`, `height_mm`, `diameter_mm`. All declared, none derived.
+Left out until a reader and the facts exist: heat sources, standing heat
+loss, serial number, maximum pressure, and the last service date.
+
+**`part_of`: one model for anything with probes inside it.** The thing (a
+cylinder, a fridge) is an entry with its class, asset fields, room and
+`telemetry: false`. Each probe is its own entry with its own identity and
+`part_of` pointing at the thing. `PlaceOf(m, id)` resolves one level: a
+device's own room, else its `part_of`'s, so services can't disagree about
+where a probe is. `Place()` is unchanged.
+
+**`telemetry: false`** says, on the entry, that it sends nothing itself.
+That is how `Check` knows a missing identity is deliberate; it is never
+inferred from something pointing at the entry.
+
+| Check | When |
+|---|---|
+| no `device.identity_missing` | for `telemetry: false` only. Forgetting the key gives the existing warning |
+| `device.telemetry_contradiction` | `telemetry: false` with a `scheme`/`primary`/`display` (or a legacy `ieee_address`) |
+| `device.part_of_unresolved` | `part_of` names no device |
+| `device.part_of_chain` | `part_of` names itself, or a device that is itself `part_of` |
+| `device.part_of_room_mismatch` | both declare a room, and they differ |
+
+**Before shipping, check** how statehouse, countinghouse and greenhouse treat
+a configured device they never hear from. Any that lists it or alerts on it
+must skip `SendsTelemetry() == false` in the same release.
+
+Existing fridge and freezer probes keep their own `room` and work
+unchanged. Adding the appliance entry and `part_of` is optional, per device.
