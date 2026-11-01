@@ -40,6 +40,11 @@ const (
 	CodeIdentityMissing   = "device.identity_missing"   // nothing a service can match the device by
 	CodeDuplicateIdentity = "device.duplicate_identity" // two devices share a scheme and primary or display
 	CodeLegacyLocation    = "device.legacy_location"    // still carries the deprecated location
+
+	CodeTelemetryContradiction = "device.telemetry_contradiction" // telemetry: false, yet it has an identity
+	CodePartOfUnresolved       = "device.part_of_unresolved"      // part_of names no device
+	CodePartOfChain            = "device.part_of_chain"           // part_of names itself, or a device that is itself part_of
+	CodePartOfRoomMismatch     = "device.part_of_room_mismatch"   // it and its part_of both declare rooms, and they differ
 )
 
 // ErrNotObject is returned by Decode for a document that is not a JSON object.
@@ -48,6 +53,7 @@ var ErrNotObject = errors.New("devices: document is not a JSON object")
 var (
 	deviceFields    = jsonFields(reflect.TypeOf(Device{}))
 	thresholdFields = jsonFields(reflect.TypeOf(Thresholds{}))
+	cylinderFields  = jsonFields(reflect.TypeOf(Cylinder{}))
 	durationPtr     = reflect.TypeOf((*time.Duration)(nil))
 )
 
@@ -205,6 +211,12 @@ func decodeDevice(id string, data json.RawMessage) (Device, []Problem, bool) {
 			d.Thresholds = t
 			continue
 		}
+		if i == deviceFields["cylinder"] {
+			c, ps := decodeCylinder(id, e)
+			problems = append(problems, ps...)
+			d.Cylinder = c
+			continue
+		}
 		// Decode into a fresh value and set it only on success, so a bad
 		// value leaves no partial result behind.
 		p := reflect.New(dv.Field(i).Type())
@@ -261,6 +273,36 @@ func decodeThresholds(id string, e entry) (*Thresholds, []Problem) {
 		}
 	}
 	return &t, problems
+}
+
+// decodeCylinder decodes the cylinder block one value at a time, so a bad
+// value costs only itself.
+func decodeCylinder(id string, e entry) (*Cylinder, []Problem) {
+	if bytes.Equal(bytes.TrimSpace(e.raw), []byte("null")) {
+		return nil, nil
+	}
+	es, ok := entries(e.raw)
+	if !ok {
+		return nil, []Problem{{
+			ID: id, Field: e.key, Code: CodeBadValue,
+			Message: fmt.Sprintf("dropped: cylinder is %s, not an object", kind(e.raw)),
+		}}
+	}
+	var c Cylinder
+	cv := reflect.ValueOf(&c).Elem()
+	chosen, problems := lastPerField(id, e.key+".", es, cylinderFields)
+	for i, ce := range chosen {
+		p := reflect.New(cv.Field(i).Type())
+		if err := json.Unmarshal(ce.raw, p.Interface()); err != nil {
+			problems = append(problems, Problem{
+				ID: id, Field: e.key + "." + ce.key, Code: CodeBadValue,
+				Message: fmt.Sprintf("dropped: %v", err),
+			})
+			continue
+		}
+		cv.Field(i).Set(p.Elem())
+	}
+	return &c, problems
 }
 
 func kind(data json.RawMessage) string {

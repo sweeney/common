@@ -40,8 +40,27 @@ func Check(m map[string]Device) []Problem {
 		if d.Covers != "" && d.Covers != CoverageHouse && !roomShaped(d.Covers) {
 			add(id, CodeCoversUnresolved, "covers %q is neither %q nor a room id", d.Covers, CoverageHouse)
 		}
-		if d.Scheme == "" || (d.Primary == "" && d.Display == "") {
+		hasIdentity := d.Scheme != "" || d.Primary != "" || d.Display != ""
+		switch {
+		case !d.SendsTelemetry() && hasIdentity:
+			add(id, CodeTelemetryContradiction, "telemetry is false, yet it has an identity (%s %s): which is it?", d.Scheme, d.Primary+d.Display)
+		case !d.SendsTelemetry():
+			// No identity on purpose: it sends nothing itself.
+		case d.Scheme == "" || (d.Primary == "" && d.Display == ""):
 			add(id, CodeIdentityMissing, "no scheme with a primary or display, so no service can match it")
+		}
+		if d.PartOf != "" {
+			parent, ok := m[d.PartOf]
+			switch {
+			case d.PartOf == id:
+				add(id, CodePartOfChain, "part_of names itself")
+			case !ok:
+				add(id, CodePartOfUnresolved, "part_of %q names no device", d.PartOf)
+			case parent.PartOf != "":
+				add(id, CodePartOfChain, "part_of %q is itself part_of %q; part_of is one level", d.PartOf, parent.PartOf)
+			case d.Room != "" && parent.Room != "" && d.Room != parent.Room:
+				add(id, CodePartOfRoomMismatch, "room %q, but its part_of %q is in %q", d.Room, d.PartOf, parent.Room)
+			}
 		}
 		for _, name := range []struct{ kind, value string }{{"primary", d.Primary}, {"display", d.Display}} {
 			if d.Scheme == "" || name.value == "" {

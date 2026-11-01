@@ -90,12 +90,28 @@ work.
    `{"online":false}` last will, telemetry QoS 0 / event QoS 1 behind a
    bridge). Extract once the two stop diverging.
 
-   **Built as module `mqttpub` on a local branch (`feat/mqttpub`), not
-   tagged, not pushed** (2026-10-31): ups-mqtt's publisher, retry and
-   `mqtttest`, with netmon's `Watch` and `Options`, plus `Connected()` for
-   `/healthz`. Migration: ups-mqtt first, deployed and verified, then tag
-   `mqttpub/v0.1.0`; then netmon; then tanktemp. See
-   [`mqttpub-DESIGN.md`](mqttpub-DESIGN.md).
+   **Module `mqttpub`, tagged `mqttpub/v0.1.0`** (2026-11-01,
+   sweeney/common#9): ups-mqtt's publisher, retry and `mqtttest`, with
+   netmon's `Watch` and `Options`, plus `Connected()` for `/healthz`.
+   tanktemp ran on it first (on its Pi since 2026-10-31), rather than
+   ups-mqtt as first planned. Next: ups-mqtt, then netmon, each in its own
+   session. See [`mqttpub-DESIGN.md`](mqttpub-DESIGN.md).
+3. **Daemon lifecycle and `/healthz` (`lifecycle`, `health`).** Built
+   locally for tanktemp (DS18B20 hot water probes), the third Pi daemon.
+   `lifecycle` is the runtime pulled out of `iot.Run`; `iot` gets
+   rebuilt on it in `iot/v0.2.0`, with its tests and boiler-sensor's goldens
+   unchanged. `health` is the `/healthz` that boiler-sensor and
+   pi-price-screen each copy. Both were tagged on 2026-11-01
+   (`lifecycle/v0.1.0`, `health/v0.1.0`; sweeney/common#8), after tanktemp
+   ran on them on its Pi; boiler-sensor and pi-price-screen move in their own sessions
+   (sweeney/boiler-sensor#6, sweeney/pi-price-screen#3). See
+   [lifecycle-DESIGN.md](lifecycle-DESIGN.md) and
+   [health-DESIGN.md](health-DESIGN.md).
+4. **Not shared, on purpose: the deploy `lib.sh`.** tanktemp copies
+   boiler-sensor's `deploy/lib.sh` (build, version stamping, symlinked
+   releases, `/healthz` and retained-heartbeat verification, auto-rollback).
+   It is shell, used by two repos, and changes with each one's deploy; revisit
+   if a third copy appears.
 
 ## Modules 2–4: `db`, `backup`, `web` (moved from `identity/common`)
 
