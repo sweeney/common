@@ -216,11 +216,11 @@ func loop(cfg RunConfig, now func() time.Time, netInfo func() *status.NetworkInf
 				// info (nil) counts as "unavailable", so losing or regaining
 				// pi-helper's file is logged too.
 				if havePrevNet {
-					if was, now := netStatus(prevNet), netStatus(n); was != now {
-						logger.Printf("network: status changed since last heartbeat: %s → %s", was, now)
+					if was, cur := netStatus(prevNet), netStatus(n); was != cur {
+						logger.Printf("network: status changed since last heartbeat: %s → %s", was, cur)
 					}
-					if was, now := netWifiStatus(prevNet), netWifiStatus(n); was != now {
-						logger.Printf("network: wifi status changed since last heartbeat: %s → %s", was, now)
+					if was, cur := netWifiStatus(prevNet), netWifiStatus(n); was != cur {
+						logger.Printf("network: wifi status changed since last heartbeat: %s → %s", was, cur)
 					}
 				}
 				prevNet, havePrevNet = n, true
