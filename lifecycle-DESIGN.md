@@ -25,6 +25,15 @@ dependencies.
 4. **Ticks are skipped, never queued,** while work is running.
 5. **Heartbeats only once ready,** as in `iot.Run`, where a scheduled
    heartbeat only fires once baselined.
+6. **`Next`: the work may decide the cadence** (2026-11-09, for tanktemp's
+   adaptive cadence, sweeney/tanktemp#1). A caller-made `Tick` can't do this
+   safely: the interval depends on the unit that's running, and only
+   `Run` knows when it has *seen* that unit finish. A tick sent from
+   inside `Work` (or just after it) can land before `Run` reads `done`, and
+   is then skipped as "still running", though nothing is. So `Run` asks
+   `Next(started, err)` after it has consumed `done`, on its own goroutine,
+   and arms one timer. There is nothing to skip, so `OnSkip` keeps its
+   meaning; `Next` and `Tick` are exclusive.
 
 ## Consumers and tags
 

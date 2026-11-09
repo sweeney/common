@@ -58,8 +58,8 @@ type Event struct {
 	Reason string // Shutdown only: "SIGTERM", "SIGINT", another signal's name, or "context"
 }
 
-// Config wires Run. Work and Emit are required, and either Interval or
-// Tick. The injection points default to production behaviour.
+// Config wires Run. Work and Emit are required, and one of Interval, Tick
+// or Next. The injection points default to production behaviour.
 type Config struct {
 	// Work does one unit of work. It must return promptly once ctx is done.
 	Work func(ctx context.Context, now time.Time) error
@@ -69,7 +69,25 @@ type Config struct {
 	// Emit publishes an event. Errors are logged, never fatal.
 	Emit func(Event) error
 
-	Interval  time.Duration // work cadence, when Tick is nil
+	// Next, when set, schedules the work instead of Interval or Tick: for
+	// a cadence that depends on what the work found (tanktemp sweeps faster
+	// while its probes are changing). After each unit of work has returned
+	// and Run has seen it return, Run calls Next on its own goroutine with
+	// the time that unit started (Now() when Run started it) and the error
+	// it returned. The next unit starts at the time Next returns, or at
+	// once if that isn't after Now(). Without Immediate, Run first calls
+	// Next(time.Time{}, nil) for the first unit's time.
+	//
+	// So Next is never called while work is running, a unit can never be
+	// due while the one before is still finishing, and OnSkip is never
+	// called: there are no ticks to skip. An overrun is Next's to handle
+	// (return a later time to skip ahead); Run never queues work. Next and
+	// Tick are exclusive; Interval is ignored. Times from the default Now
+	// (time.Now) carry a monotonic reading, so a Next that only adds
+	// durations to started keeps the schedule clear of wall-clock steps.
+	Next func(started time.Time, err error) time.Time
+
+	Interval  time.Duration // work cadence, when Tick and Next are nil
 	Heartbeat time.Duration // heartbeat cadence, when HeartbeatTick is nil; 0 means none
 	Immediate bool          // run Work once at start rather than waiting for the first tick
 	OnSkip    func()        // a tick arrived while Work was still running
@@ -91,8 +109,11 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.Work == nil || cfg.Emit == nil {
 		return fmt.Errorf("%w: Work and Emit are required", ErrConfig)
 	}
-	if cfg.Tick == nil && cfg.Interval <= 0 {
-		return fmt.Errorf("%w: Interval or Tick is required", ErrConfig)
+	if cfg.Next != nil && cfg.Tick != nil {
+		return fmt.Errorf("%w: Next and Tick are two schedules; set one", ErrConfig)
+	}
+	if cfg.Next == nil && cfg.Tick == nil && cfg.Interval <= 0 {
+		return fmt.Errorf("%w: Interval, Tick or Next is required", ErrConfig)
 	}
 	now := cfg.Now
 	if now == nil {
@@ -114,7 +135,7 @@ func Run(ctx context.Context, cfg Config) error {
 		sig = sc
 	}
 	tick := cfg.Tick
-	if tick == nil {
+	if tick == nil && cfg.Next == nil {
 		t := time.NewTicker(cfg.Interval)
 		defer t.Stop()
 		tick = t.C
@@ -135,13 +156,33 @@ func Run(ctx context.Context, cfg Config) error {
 
 	workCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	var done chan error // non-nil while work is running
+	var done chan error   // non-nil while work is running
+	var started time.Time // when the running (or last) unit started
+
+	// With Next, due fires when the next unit is due; nil while work runs.
+	var due <-chan time.Time
+	var dueTimer *time.Timer
+	defer func() {
+		if dueTimer != nil {
+			dueTimer.Stop()
+		}
+	}()
+	schedule := func(lastStarted time.Time, err error) {
+		at := cfg.Next(lastStarted, err)
+		dueTimer = time.NewTimer(max(0, at.Sub(now())))
+		due = dueTimer.C
+	}
+
 	startWork := func() {
 		done = make(chan error, 1)
-		go func(c chan error) { c <- cfg.Work(workCtx, now()) }(done)
+		due = nil
+		started = now()
+		go func(c chan error, at time.Time) { c <- cfg.Work(workCtx, at) }(done, started)
 	}
 	if cfg.Immediate {
 		startWork()
+	} else if cfg.Next != nil {
+		schedule(time.Time{}, nil)
 	}
 	readySent := false
 	shutdown := func(reason string) error {
@@ -170,6 +211,8 @@ func Run(ctx context.Context, cfg Config) error {
 				continue
 			}
 			startWork()
+		case <-due:
+			startWork()
 		case err := <-done:
 			done = nil
 			if err != nil {
@@ -178,6 +221,9 @@ func Run(ctx context.Context, cfg Config) error {
 			if !readySent && ready() {
 				readySent = true
 				emit(Event{Kind: Ready, At: now()})
+			}
+			if cfg.Next != nil {
+				schedule(started, err)
 			}
 		case <-hbTick:
 			if readySent {
