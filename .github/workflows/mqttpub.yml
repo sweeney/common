@@ -29,6 +29,18 @@ jobs:
       - name: Install Mosquitto
         run: sudo apt-get update -q && sudo apt-get install -y -q mosquitto
 
+      # ubuntu-26.04's mosquitto (2.0.22) ships an AppArmor profile that
+      # keeps it from opening a config outside /etc/mosquitto, so it can't
+      # read the configs the tests write under the temp dir ("Unable to
+      # open config file"). Unload that profile for the test run only.
+      - name: Let Mosquitto read the tests' configs
+        run: |
+          ls /etc/apparmor.d/ | grep -i mosquitto || echo "no mosquitto AppArmor profile"
+          for p in /etc/apparmor.d/*mosquitto*; do
+            [ -f "$p" ] && sudo apparmor_parser -R "$p" && echo "unloaded $p"
+          done
+          true
+
       - name: Verify dependencies
         run: go mod verify
 
