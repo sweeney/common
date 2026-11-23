@@ -98,3 +98,16 @@ func TestFakeSubscribeConcurrent(t *testing.T) {
 		t.Errorf("%d subscriptions, want 200", n)
 	}
 }
+
+// Deliver hands each handler its own copy of the payload.
+func TestFakeDeliverCopiesPayload(t *testing.T) {
+	f := &Fake{}
+	var got []byte
+	_ = f.Subscribe("a", 0, func(r mqttpub.Received) { got = r.Payload }, nil)
+	buf := []byte("xyz")
+	f.Deliver("a", buf, false)
+	buf[0] = 'Q'
+	if string(got) != "xyz" {
+		t.Errorf("payload %q changed with the caller's buffer", got)
+	}
+}

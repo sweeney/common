@@ -12,7 +12,11 @@ type Received struct {
 	Payload []byte // the handler's to keep
 	// Retained is the broker's retain flag on delivery: true for a retained
 	// message replayed because the subscription was (re)made, false for one
-	// published while subscribed (MQTT 3.1.1 §3.3.1.3).
+	// published while subscribed (MQTT 3.1.1 §3.3.1.3). Through a bridge
+	// it is not that reliable: a retained message the bridge replays when
+	// it reconnects reaches subscribers with the flag false, as if live
+	// (Mosquitto 2.1). Treat false as "live or bridged", and judge a
+	// message's age by its own timestamp.
 	Retained bool
 }
 
@@ -82,7 +86,12 @@ func CheckSubscription(filter string, qos byte, onMsg func(Received)) error {
 // a clean session forgets subscriptions, and a retained message is only
 // delivered on a fresh subscribe. onMsg gets each message (on paho's
 // goroutine); onLost, if set, runs when the connection drops, since what
-// is published while it is down is missed. Call it before Connect.
+// is published while it is down is missed. Call it before Connect; after,
+// it is refused.
+//
+// A broker that refuses the subscription (SUBACK 0x80) is logged, since
+// paho reports that as success; Mosquitto, though, grants a subscription
+// its ACL denies and then delivers nothing.
 //
 // MQTTPublisher is the one MQTT connection a service shares: its last will
 // covers both directions, and publishing and subscribing reconnect
@@ -92,7 +101,10 @@ func (p *MQTTPublisher) Subscribe(filter string, qos byte, onMsg func(Received),
 		return err
 	}
 	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.connectCalled {
+		return fmt.Errorf("mqttpub: Subscribe(%q) after Connect: it would be made only at the next reconnect", filter)
+	}
 	p.watches = append(p.watches, watch{topic: filter, qos: qos, onMsg: onMsg, onLost: onLost})
-	p.mu.Unlock()
 	return nil
 }

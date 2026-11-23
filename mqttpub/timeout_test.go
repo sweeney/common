@@ -69,7 +69,17 @@ type fakeClient struct {
 	// subscribed records each Subscribe, in order; subscribeErr fails them.
 	subscribed   []fakeSub
 	subscribeErr error
+	// suback, if set, is the SUBACK's granted QoS per filter (0x80: refused).
+	suback map[string]byte
 }
+
+// subToken is a completed subscribe token carrying a SUBACK.
+type subToken struct {
+	*fakeToken
+	result map[string]byte
+}
+
+func (t subToken) Result() map[string]byte { return t.result }
 
 type fakeSub struct {
 	topic   string
@@ -107,6 +117,9 @@ func (c *fakeClient) Publish(_ string, qos byte, _ bool, _ interface{}) mqtt.Tok
 
 func (c *fakeClient) Subscribe(topic string, qos byte, h mqtt.MessageHandler) mqtt.Token {
 	c.subscribed = append(c.subscribed, fakeSub{topic, qos, h})
+	if c.suback != nil {
+		return subToken{newFakeToken(true, c.subscribeErr), c.suback}
+	}
 	return newFakeToken(true, c.subscribeErr)
 }
 

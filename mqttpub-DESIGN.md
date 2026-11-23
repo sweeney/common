@@ -255,3 +255,10 @@ topic, QoS 1, the payload as a string.
   service tests its ingest without a broker; `Match` gives the fake a
   broker's matching rules. The real broker's retain flag is pinned against
   Mosquitto (`subscribe_broker_test.go`).
+- **From tanktemp's review (#15):** `Subscribe` after `Connect` is an
+  error, not a subscription silently waiting for a reconnect; a SUBACK 0x80
+  is logged. tanktemp reproduced, on Mosquitto 2.1.2 with two brokers and a
+  proxy, that a retained message a bridge replays on reconnecting arrives
+  with the retain flag clear, so `Received.Retained` is documented as "true:
+  a replay; false: live or bridged". A QoS 1 `Publish` from inside a
+  handler doesn't deadlock (checked against a real broker).

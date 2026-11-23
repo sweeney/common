@@ -1,6 +1,9 @@
 package mqttpub
 
 import (
+	"context"
+	"log"
+	"strings"
 	"testing"
 	"time"
 )
@@ -138,5 +141,43 @@ func TestValidFilterAndMatch(t *testing.T) {
 		if got := Match(tc.filter, tc.topic); got != tc.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tc.filter, tc.topic, got, tc.want)
 		}
+	}
+}
+
+// Subscribe after Connect is refused: the subscription would only be
+// made at the next reconnect, silently missing everything until then.
+func TestSubscribe_AfterConnectRefused(t *testing.T) {
+	c := &fakeClient{connected: true}
+	var waits []time.Duration
+	p := newTestPublisher(c, &waits)
+	if err := p.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Subscribe("a/b", 0, func(Received) {}, nil); err == nil {
+		t.Error("Subscribe after Connect accepted")
+	}
+}
+
+// A SUBACK refusing the subscription (0x80) is logged: paho reports it as
+// success. (Mosquitto grants an ACL-denied subscription and then delivers
+// nothing, so this catches only a broker that says no.)
+func TestSubscribe_RefusedSubackLogged(t *testing.T) {
+	buf := &lockedBuffer{}
+	out := log.Writer()
+	log.SetOutput(buf)
+	t.Cleanup(func() { log.SetOutput(out) })
+	c := &fakeClient{connected: true, suback: map[string]byte{"a/+": 0x80}}
+	var waits []time.Duration
+	p := newTestPublisher(c, &waits)
+	if err := p.Subscribe("a/+", 1, func(Received) {}, nil); err != nil {
+		t.Fatal(err)
+	}
+	p.subscribe(c)
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.Contains(buf.String(), "the broker refused the subscription to a/+") {
+		if time.Now().After(deadline) {
+			t.Fatalf("refusal not logged:\n%s", buf.String())
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }

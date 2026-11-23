@@ -110,6 +110,8 @@ type MQTTPublisher struct {
 	closed bool
 
 	watches []watch
+	// connectCalled: Connect has been called, so Subscribe is refused.
+	connectCalled bool
 }
 
 // watch is a subscription made on every (re)connect.
@@ -189,6 +191,7 @@ func (p *MQTTPublisher) Connect(ctx context.Context) error {
 	if p.ctx == nil {
 		p.ctx = ctx
 	}
+	p.connectCalled = true // Connect was called: Subscribe is refused from now
 	p.mu.Unlock()
 	return p.connectOnce(ctx)
 }
@@ -254,6 +257,10 @@ func (p *MQTTPublisher) subscribe(c mqtt.Client) {
 		go func() {
 			if !tok.WaitTimeout(p.timeout) || tok.Error() != nil {
 				log.Printf("subscribing to %s on %s failed: %v", w.topic, p.broker, tok.Error())
+				return
+			}
+			if st, ok := tok.(interface{ Result() map[string]byte }); ok && st.Result()[w.topic] == 0x80 { // paho's *SubscribeToken
+				log.Printf("the broker refused the subscription to %s on %s", w.topic, p.broker)
 			}
 		}()
 	}
