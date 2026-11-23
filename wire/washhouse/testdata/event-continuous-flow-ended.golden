@@ -1,0 +1,1 @@
+{"schema":"net.swee.washhouse.event.v1","event":"continuous_flow_ended","timestamp":"2001-01-01T01:59:11.903Z","continuous_flow":{"since":"2001-01-01T00:01:05.217Z","last":"2001-01-01T01:14:11.903Z","litres":6,"flow_l_min":0.082}}
