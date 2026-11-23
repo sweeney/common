@@ -17,7 +17,7 @@ only pulls the dependencies of the module it actually imports.
 | `iot` | `github.com/sweeney/common/iot` | **landed — `iot/v0.1.2`** | Paho MQTT, go-gpiocdev only |
 | `db` | `github.com/sweeney/common/db` | **landed — `db/v0.1.0`** (from identity/common) | modernc sqlite |
 | `backup` | `github.com/sweeney/common/backup` | **landed — `backup/v0.1.1`** (from identity/common) | AWS SDK (R2/S3), sqlite |
-| `web` | `github.com/sweeney/common/web` | **landed — `web/v0.2.1`** (from identity/common) | `x/time`, `yaml.v3` |
+| `web` | `github.com/sweeney/common/web` | **landed — `web/v0.3.0`** (from identity/common; `apiauth`, `serve` from the services) | `x/time`, `yaml.v3` |
 | `remoteconfig` | `github.com/sweeney/common/remoteconfig` | **landed — `remoteconfig/v0.2.0`** (config.swee.net client; replaces the copies in statehouse, countinghouse, greenhouse, pi-price-screen) | stdlib only |
 | `devices` | `github.com/sweeney/common/devices` | **landed — `devices/v0.2.0`** (the `devices_<site>` schema, with asset fields, `cylinder`, `part_of` and `telemetry`; replaces the copies in statehouse, countinghouse, greenhouse) | stdlib only |
 | `lifecycle` | `github.com/sweeney/common/lifecycle` | **landed — `lifecycle/v0.1.0`** (the daemon runtime from `iot.Run`: signals, STARTUP/ready/HEARTBEAT/SHUTDOWN, cancellable work; tanktemp runs on it, `iot` next) | stdlib only |
