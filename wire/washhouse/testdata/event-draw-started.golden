@@ -1,0 +1,1 @@
+{"schema":"net.swee.washhouse.event.v1","event":"draw_started","timestamp":"2001-01-01T00:10:10.308Z","active_draw":{"draw_id":"20001231T235443Z-76","started_at":"2001-01-01T00:10:10.308Z","last_litre_at":"2001-01-01T00:10:10.308Z","litres":1,"flow_l_min":null,"kind":"tap"}}

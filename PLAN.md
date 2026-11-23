@@ -200,6 +200,14 @@ Follow-ups found along the way:
 5. greenhouse, statehouse, mqttproxy: bump to v0.7.0 and `web/spec`. The AWS
    SDK and sqlite leave their module graphs. ✅
 
+## Module: `wire` (2026-11-23, for washhouse)
+
+Decoders for MQTT payloads more than one service reads: `wire/tanktemp`,
+`wire/boiler` and `wire/washhouse` (washhouse's own contract, with its
+encoders). Written in washhouse for its phases 1–3 and moved here in its
+phase 4, so statehouse's washhouse adapter shares the contract's code rather
+than copying it. See [wire/README.md](wire/README.md).
+
 ## Sequencing summary
 
 1. Generalize boiler-sensor in place (in its repo). ✅ done

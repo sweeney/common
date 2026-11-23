@@ -1,0 +1,1 @@
+{"schema":"net.swee.washhouse.event.v1","event":"tank_state_changed","timestamp":"2001-01-01T00:10:10.308Z","tank":{"device_id":"hot_water_cylinder_right","state":"drawing","prev":"cooling","heat_source":null,"power_kw":null}}

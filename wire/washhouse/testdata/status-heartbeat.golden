@@ -1,0 +1,1 @@
+{"schema":"net.swee.washhouse.status.v1","online":true,"event":"HEARTBEAT","timestamp":"2001-01-01T00:15:00.000Z","version":"e34968b","ready":true,"uptime_s":900,"tanks":["hot_water_cylinder_left","hot_water_cylinder_right"]}
