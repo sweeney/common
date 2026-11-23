@@ -158,3 +158,51 @@ func TestNewServerTimeouts(t *testing.T) {
 		t.Errorf("%+v", s)
 	}
 }
+
+// A request still running when the shutdown's wait is up is cut off: Run
+// closes the server, and returns the shutdown's error.
+func TestRunClosesWhenTheShutdownRunsOver(t *testing.T) {
+	old := shutdownWait
+	shutdownWait = 50 * time.Millisecond
+	defer func() { shutdownWait = old }()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	started, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, ln, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			close(started)
+			<-release
+		}))
+	}()
+	got := make(chan error, 1)
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String() + "/")
+		if err == nil {
+			resp.Body.Close()
+		}
+		got <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("Run: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run didn't return")
+	}
+	select {
+	case err := <-got:
+		if err == nil {
+			t.Error("the request in flight wasn't cut off")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the request in flight is still open")
+	}
+}

@@ -30,6 +30,13 @@
 // 401 tells the client to discard its credentials, so answering one in an
 // identity outage would sign everyone out over tokens nobody examined.
 //
+// A 503 is exactly the verifier's KeysUnavailable, so it is only as narrow
+// as the verifier makes it. identity/common v0.7.0's JWKSVerifier also
+// reports an unknown kid as KeysUnavailable while its refetch is
+// throttled (10 s after a miss): in that window a token with a made-up
+// kid, or one signed by a key since rotated out, is a 503, not a 401
+// (sweeney/common#17, tanktemp's review; the fix is identity's).
+//
 // Descriptions are the Refusal's or this package's constants: nothing of
 // the presented token is reflected back.
 package apiauth
@@ -66,7 +73,12 @@ type Refusal struct {
 	Scope       string
 }
 
-func (r *Refusal) Error() string { return fmt.Sprintf("%d %s: %s", r.Status, r.Code, r.Description) }
+func (r *Refusal) Error() string {
+	if r == nil {
+		return "refusal"
+	}
+	return fmt.Sprintf("%d %s: %s", r.Status, r.Code, r.Description)
+}
 
 // Config is the middleware's policy. Verifier, UserOK, ServiceOK and
 // KeysUnavailable are required: a missing policy would quietly admit
@@ -260,16 +272,23 @@ func New[U, S any](c Config[U, S]) (func(http.Handler) http.Handler, error) {
 	}, nil
 }
 
-// refusal is err's Refusal, its status made 401 or 403; or, for any other
-// error, the default (whose text is never sent).
+// refusal is err's Refusal, its status made 401 or 403 and, with no
+// Code, given its status's (invalid_token, insufficient_scope); or, for
+// any other error, the default (whose text is never sent).
 func refusal(err error, status int, code, desc string) *Refusal {
 	var rf *Refusal
-	if !errors.As(err, &rf) {
+	if !errors.As(err, &rf) || rf == nil { // a nil *Refusal is still an error: refused
 		return &Refusal{Status: status, Code: code, Description: desc}
 	}
 	out := *rf
 	if out.Status != http.StatusUnauthorized && out.Status != http.StatusForbidden {
 		out.Status = http.StatusForbidden
+	}
+	if out.Code == "" {
+		out.Code = codeInsufficientScope
+		if out.Status == http.StatusUnauthorized {
+			out.Code = codeInvalidToken
+		}
 	}
 	return &out
 }
@@ -316,11 +335,18 @@ func bearerToken(h string) (string, bool) {
 	return t, t != ""
 }
 
-// joseTyp is a JWT's header typ, or "" when it has none or isn't a JWT.
-// Unverified: it only routes the token to the parser that checks it.
+// maxHeader is the longest encoded JOSE header joseTyp decodes: anyone
+// can send a token, and a real header is a few dozen bytes.
+const maxHeader = 4096
+
+// joseTyp is a JWT's header typ, or "" when it has none, isn't a JWT, or
+// its header is over maxHeader. Unverified: it only routes the token to
+// the parser that checks it. The header must be unpadded base64url, as
+// JWS compact serialisation is (RFC 7515) and identity's tokens are; a
+// padded one routes as a user token, which the parser then judges.
 func joseTyp(token string) string {
 	h, _, ok := strings.Cut(token, ".")
-	if !ok {
+	if !ok || len(h) > maxHeader {
 		return ""
 	}
 	b, err := base64.RawURLEncoding.DecodeString(h)

@@ -334,3 +334,60 @@ func TestOutcomeNames(t *testing.T) {
 		}
 	}
 }
+
+// A JOSE header over 4 KiB isn't decoded to route the token: it goes to
+// the user parser, which refuses it.
+func TestOversizedHeaderIsNotRouted(t *testing.T) {
+	big := `{"alg":"ES256","typ":"at+jwt","pad":"` + strings.Repeat("x", 4096) + `"}`
+	e := base64.RawURLEncoding.EncodeToString
+	tok := e([]byte(big)) + "." + e([]byte("s:statehouse")) + ".sig"
+	if got := joseTyp(tok); got != "" {
+		t.Errorf("typ %q", got)
+	}
+	if w := do(newAuth(t, config(&fakeVerifier{}))(ok), "Bearer "+tok); w.Code != http.StatusUnauthorized {
+		t.Errorf("%d", w.Code)
+	}
+	// Just under the cap is still read.
+	fit := `{"typ":"at+jwt","pad":"` + strings.Repeat("x", 3000) + `"}`
+	if got := joseTyp(e([]byte(fit)) + ".x.y"); got != "at+jwt" {
+		t.Errorf("a header under the cap: %q", got)
+	}
+}
+
+// A Refusal with no Code gets its status's.
+func TestRefusalWithoutACode(t *testing.T) {
+	for status, want := range map[int]string{http.StatusUnauthorized: `error="invalid_token"`, http.StatusForbidden: `error="insufficient_scope"`} {
+		c := config(&fakeVerifier{})
+		c.ServiceOK = func(service) error { return &Refusal{Status: status, Description: "no"} }
+		w := do(newAuth(t, c)(ok), "Bearer "+jwt("at+jwt", "s:x"))
+		if w.Code != status || !strings.Contains(w.Header().Get("WWW-Authenticate"), want) {
+			t.Errorf("%d: %d %q", status, w.Code, w.Header().Get("WWW-Authenticate"))
+		}
+	}
+}
+
+// A policy that returns a nil *Refusal as its error has still returned an
+// error: it is refused (the default refusal), never a panic.
+func TestTypedNilRefusalIsARefusal(t *testing.T) {
+	c := config(&fakeVerifier{})
+	c.ServiceOK = func(service) error {
+		var r *Refusal
+		return r
+	}
+	c.UserOK = func(user) error {
+		var r *Refusal
+		return r
+	}
+	h := newAuth(t, c)(ok)
+	if w := do(h, "Bearer "+jwt("at+jwt", "s:statehouse")); w.Code != http.StatusForbidden ||
+		w.Header().Get("WWW-Authenticate") != realm+`, error="insufficient_scope", error_description="client is not permitted to call this API"` {
+		t.Errorf("service: %d %q", w.Code, w.Header().Get("WWW-Authenticate"))
+	}
+	if w := do(h, "Bearer "+jwt("", "u:true")); w.Code != http.StatusUnauthorized {
+		t.Errorf("user: %d", w.Code)
+	}
+	var r *Refusal
+	if r.Error() != "refusal" {
+		t.Errorf("a nil Refusal's Error: %q", r.Error())
+	}
+}

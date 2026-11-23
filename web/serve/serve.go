@@ -16,6 +16,8 @@ import (
 // ShutdownWait is how long Run lets requests in flight finish.
 const ShutdownWait = 5 * time.Second
 
+var shutdownWait = ShutdownWait // tests shorten it
+
 // WriteJSON writes v as JSON with status. It encodes first, so a value
 // encoding/json can't marshal (a NaN, say) is a 500 with the JSON error,
 // never a 200 with a broken body. HTML isn't escaped: this is an API.
@@ -75,7 +77,8 @@ func NewServer(h http.Handler) *http.Server {
 
 // Run serves h on ln until ctx is done, then shuts down, letting requests
 // in flight finish for up to ShutdownWait. It returns nil after a
-// shutdown, or the error that stopped the server.
+// shutdown, or the error that stopped the server. Requests still running
+// when the wait is up are cut off, and Run returns the shutdown's error.
 func Run(ctx context.Context, ln net.Listener, h http.Handler) error {
 	srv := NewServer(h)
 	errc := make(chan error, 1)
@@ -85,9 +88,12 @@ func Run(ctx context.Context, ln net.Listener, h http.Handler) error {
 		return err
 	case <-ctx.Done():
 	}
-	sctx, cancel := context.WithTimeout(context.Background(), ShutdownWait)
+	sctx, cancel := context.WithTimeout(context.Background(), shutdownWait)
 	defer cancel()
 	err := srv.Shutdown(sctx)
+	if err != nil {
+		_ = srv.Close()
+	}
 	if serr := <-errc; !errors.Is(serr, http.ErrServerClosed) && err == nil {
 		err = serr
 	}
