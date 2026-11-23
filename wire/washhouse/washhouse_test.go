@@ -461,3 +461,22 @@ func TestEncodersFillNilLists(t *testing.T) {
 		t.Errorf("event: %v, %v: %s", err, derr, raw)
 	}
 }
+
+// Every golden is pinned by a test above: one nothing checks would be a
+// contract nobody holds to.
+func TestEveryGoldenIsUsed(t *testing.T) {
+	used := map[string]bool{"state-draw.golden": true, "state-unknown.golden": true, "tank-cooling.golden": true,
+		"tank-unknown.golden": true, "status-heartbeat.golden": true, "status-shutdown.golden": true, "lwt.golden": true}
+	for _, g := range eventGoldens {
+		used[g.name] = true
+	}
+	files, _ := filepath.Glob(filepath.Join("testdata", "*.golden"))
+	if len(files) != len(used) {
+		t.Errorf("%d goldens, %d pinned", len(files), len(used))
+	}
+	for _, f := range files {
+		if !used[filepath.Base(f)] {
+			t.Errorf("%s is pinned by no test", f)
+		}
+	}
+}

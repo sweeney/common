@@ -213,3 +213,30 @@ func TestReadyHeartbeat(t *testing.T) {
 		}
 	}
 }
+
+// encoding/json matches keys ignoring case, so a key that differs from a
+// known one only in case would override it (a second "Timestamp" moving an
+// event's time). It is refused, at every level.
+func TestDecodeRefusesCaseVariantKeys(t *testing.T) {
+	ev := `{"boiler":{"timestamp":"2001-01-01T06:30:01Z","event":"CH_ON","ch":{"state":"ON"},"hw":{"state":"OFF"}}}`
+	for _, in := range []string{
+		strings.Replace(ev, `"event"`, `"Timestamp":"2031-01-01T00:00:00Z","event"`, 1),
+		strings.Replace(ev, `"ch":{"state":"ON"}`, `"ch":{"state":"ON","STATE":"OFF"}`, 1),
+	} {
+		if e, err := DecodeEvent([]byte(in)); err == nil {
+			t.Errorf("decoded %+v from %s", e, in)
+		}
+	}
+	for _, in := range []string{
+		strings.Replace(heartbeat, `"ready":true`, `"ready":true,"HW":"OFF"`, 1),
+		strings.Replace(heartbeat, `"heartbeat_ms":900000`, `"heartbeat_ms":900000,"Heartbeat_MS":1`, 1),
+	} {
+		if s, err := DecodeSystem([]byte(in)); err == nil {
+			t.Errorf("decoded %+v from %s", s, in)
+		}
+	}
+	// Unknown keys are still accepted.
+	if _, err := DecodeSystem([]byte(strings.Replace(heartbeat, `"ready":true`, `"ready":true,"new_field":1`, 1))); err != nil {
+		t.Errorf("an unknown key was refused: %v", err)
+	}
+}

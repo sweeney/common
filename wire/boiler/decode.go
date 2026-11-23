@@ -70,7 +70,7 @@ func eventFrom(b []byte) (Event, error) {
 		CH        *channel `json:"ch"`
 		HW        *channel `json:"hw"`
 	}
-	if err := json.Unmarshal(raw, &w); err != nil {
+	if err := unmarshalExact(raw, &w); err != nil {
 		return Event{}, err
 	}
 	if w == nil {
@@ -152,7 +152,7 @@ func systemFrom(b []byte) (System, error) {
 			HeartbeatMS *int64 `json:"heartbeat_ms"`
 		} `json:"config"`
 	}
-	if err := json.Unmarshal(raw, &w); err != nil {
+	if err := unmarshalExact(raw, &w); err != nil {
 		return System{}, err
 	}
 	if w == nil {
