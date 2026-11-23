@@ -234,3 +234,24 @@ the next. None is done yet.
    shape?
 2. `Message.QOS` keeps the services' spelling rather than Go's `QoS`. Rename
    before `v0.1.0` if you prefer; it touches every call site in both services.
+
+## v0.2.0: `Subscribe` (2026-11-23, for washhouse)
+
+washhouse consumes tanktemp's states on `water/hot/tanktemp/+/state`, so it
+needs a wildcard, each message's topic, and the retain flag. The flag is how
+it tells boiler-sensor's last will firing live (HW/CH unknown at once) from
+the broker's replay of an old one. `Watch` has none of these: one exact
+topic, QoS 1, the payload as a string.
+
+- **Here, not in a new package.** A subscription must share the publishing
+  connection: one client, one last will covering both directions, one
+  reconnect. A separate subscriber would need a second connection (whose will
+  means nothing) or a hook into this one's internals. `Watch` had already
+  made this package the shared connection; the README now says so. The
+  owner agreed (2026-11-23).
+- **`Watch` is `Subscribe` at QoS 1**, unchanged for its callers and tests.
+- **The payload is copied**, so a handler may keep it.
+- **A `Subscriber` interface**, with the fake's `Deliver` and `Lose`, so a
+  service tests its ingest without a broker; `Match` gives the fake a
+  broker's matching rules. The real broker's retain flag is pinned against
+  Mosquitto (`subscribe_broker_test.go`).

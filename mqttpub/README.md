@@ -1,15 +1,18 @@
 # `github.com/sweeney/common/mqttpub`
 
-The MQTT publisher the fleet's daemons share: a `Publisher` interface, the real
-paho-backed `MQTTPublisher` with its own capped-backoff reconnect, a fake for
-tests, and real-broker test helpers. Extracted from ups-mqtt's
+The MQTT connection the fleet's daemons share: a `Publisher` interface, the
+real paho-backed `MQTTPublisher` with its own capped-backoff reconnect, a fake
+for tests, and real-broker test helpers. Despite the name it also
+subscribes (`Watch`, `Subscribe`): a service has one connection, whose last
+will covers both directions, and its publishing and subscribing reconnect
+together. Extracted from ups-mqtt's
 `internal/publisher`, `internal/retry` and `internal/mqtttest`; netmon carries a
 copy. Paho is the only external dependency.
 
 Topics and payloads belong to each service. The one shared shape is the
 `{"online":false}` last will, offered as an optional helper.
 
-**Status: built on a local branch, not tagged.** See
+**Status: `mqttpub/v0.1.0` tagged; v0.2.0 adds `Subscribe`.** See
 [`mqttpub-DESIGN.md`](../mqttpub-DESIGN.md).
 
 ## Packages
@@ -33,12 +36,15 @@ Topics and payloads belong to each service. The one shared shape is the
 | `(*MQTTPublisher).Connect(ctx)` | One attempt; the caller retries it (`retry.Connect`). Returns at once when `ctx` ends. `ctx` of the first call also bounds the publisher's own reconnects. |
 | `Publish(msg)` | Fails at once when the connection is not open, or while an earlier publish is unacknowledged past its timeout; otherwise waits up to `PublishTimeout` for the ack. |
 | `Reconnected() <-chan struct{}` | One pending signal per re-established connection. Republish current state then: nothing was queued while down. |
-| `Watch(topic, onMsg, onLost)` | A QoS 1 subscription made on every connect (call before `Connect`); `onLost` runs when the connection drops. |
+| `Subscribe(filter, qos, onMsg, onLost) error` | A subscription made on every connect (call before `Connect`), wildcards allowed. `onMsg` gets a `Received{Topic, Payload, Retained}`: the message's own topic, a copy of its payload, and the broker's retain flag (true for a retained message replayed by the subscribe, false for a live one). `onLost` runs when the connection drops. Refuses a bad filter, a QoS above 2 or a nil handler. (v0.2.0) |
+| `Watch(topic, onMsg, onLost)` | `Subscribe` at QoS 1, handing over the payload alone. |
+| `Subscriber` | `Subscribe(...)`: what a service's ingest depends on. `MQTTPublisher` and `mqttpubtest.Fake` both are one. (v0.2.0) |
+| `ValidFilter(filter)`, `Match(filter, topic)`, `CheckSubscription(...)` | The broker's rules: a filter's wildcards, which topics it matches (a leading wildcard doesn't match `$` topics), and what `Subscribe` refuses, for fakes to refuse the same. (v0.2.0) |
 | `Connected() bool` | Whether the connection is open now, for `/healthz`. |
 | `Close()` | Clean DISCONNECT, unless the last publish failed: then the broker is left to fire the will in place of the lost offline announcement. |
 | `OfflinePayload(at)` | `{"online":false,"timestamp":"…Z"}`; a zero `at` gives `{"online":false}`. |
 | `retry.Connect(ctx, what, Backoff, connect, Wait)` | Retries until success or `ctx` ends. Logs the first failure, any changed error, and an unchanged one every 5 min. `retry.Sleep` is the production `Wait`. |
-| `mqttpubtest.Fake` | Exported `Messages`, `PublishError`, `FailTopic`, `Failed`, `Closed`, `Disconnected`; `Find`, `IndexOf`, `All`, `Retained` (what a broker would hold, an empty retained payload deleting it), `Connected`, `Reset`. |
+| `mqttpubtest.Fake` | Exported `Messages`, `PublishError`, `FailTopic`, `Failed`, `Closed`, `Disconnected`; `Find`, `IndexOf`, `All`, `Retained` (what a broker would hold, an empty retained payload deleting it), `Connected`, `Reset`. Subscriptions (v0.2.0): `Subscribe`, `Deliver(topic, payload, retained)` (to every matching subscription, on the caller's goroutine), `Lose`, `Subscriptions`; `Reset` keeps them. |
 | `mqtttest` | `StartBroker`, `StartBrokerConf`, `StartBridged` (run a service's own mirrored bridge config with substitutions that must match), `StartProxy` with `Up`/`Blackhole`/`Down`, `Record`, `Retained`, `FreePort`, `ReadLines`. |
 
 ```go

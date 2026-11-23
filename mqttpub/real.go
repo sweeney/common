@@ -114,8 +114,9 @@ type MQTTPublisher struct {
 
 // watch is a subscription made on every (re)connect.
 type watch struct {
-	topic  string
-	onMsg  func(payload string)
+	topic  string // a filter
+	qos    byte
+	onMsg  func(Received)
 	onLost func()
 }
 
@@ -220,9 +221,11 @@ func (p *MQTTPublisher) Connected() bool { return p.client.IsConnectionOpen() }
 // on every reconnect, so a retained message is delivered each time. onLost
 // runs when the connection drops, since changes made while it is down are
 // missed. Call it before Connect.
+// Watch is Subscribe at QoS 1, handing over the payload alone; it doesn't
+// check topic (a broker refuses a bad one, logged on connect).
 func (p *MQTTPublisher) Watch(topic string, onMsg func(payload string), onLost func()) {
 	p.mu.Lock()
-	p.watches = append(p.watches, watch{topic, onMsg, onLost})
+	p.watches = append(p.watches, watch{topic: topic, qos: 1, onMsg: func(r Received) { onMsg(string(r.Payload)) }, onLost: onLost})
 	p.mu.Unlock()
 }
 
@@ -245,7 +248,9 @@ func (p *MQTTPublisher) subscribe(c mqtt.Client) {
 	p.mu.Unlock()
 	for _, w := range ws {
 		w := w
-		tok := c.Subscribe(w.topic, 1, func(_ mqtt.Client, m mqtt.Message) { w.onMsg(string(m.Payload())) })
+		tok := c.Subscribe(w.topic, w.qos, func(_ mqtt.Client, m mqtt.Message) {
+			w.onMsg(Received{Topic: m.Topic(), Payload: append([]byte(nil), m.Payload()...), Retained: m.Retained()})
+		})
 		go func() {
 			if !tok.WaitTimeout(p.timeout) || tok.Error() != nil {
 				log.Printf("subscribing to %s on %s failed: %v", w.topic, p.broker, tok.Error())

@@ -30,6 +30,8 @@ type Fake struct {
 	// Disconnected makes Connected report false, for a health check.  It
 	// does not fail publishes; set PublishError for that.
 	Disconnected bool
+
+	subs []subscription // Subscribe's; Reset keeps them
 }
 
 // Publish appends the message to the recorded list, or returns an error if
