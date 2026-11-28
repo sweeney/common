@@ -320,8 +320,11 @@ func TestFaultAndPartialAreChecked(t *testing.T) {
 		"totals set":               func(s *State) { s.UsableL40 = n(300) },
 		"missing a tank not there": func(s *State) { s.Partial.Missing = []string{"hot_water_cylinder_middle"} },
 		"missing a known tank":     func(s *State) { s.Partial.Missing = []string{left} },
-		"missing listed twice":     func(s *State) { s.Partial.Missing = []string{right, right} },
-		"low_hot_water true":       func(s *State) { s.LowHotWater = b(true) },
+		"a blind tank not in missing": func(s *State) {
+			s.Tanks = append(s.Tanks, TankSummary{DeviceID: "hot_water_cylinder_third", State: StateUnknown})
+		},
+		"missing listed twice": func(s *State) { s.Partial.Missing = []string{right, right} },
+		"low_hot_water true":   func(s *State) { s.LowHotWater = b(true) },
 		"no tank known": func(s *State) {
 			s.Tanks[0].StoredKWh = nil
 			s.Partial.Missing = []string{left, right}

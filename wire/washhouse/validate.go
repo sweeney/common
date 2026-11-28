@@ -74,6 +74,11 @@ func (s State) validate() error {
 				return fmt.Errorf("washhouse: a partial's missing %q must be a tank in tanks whose estimate is null", id)
 			}
 		}
+		for id, b := range blind {
+			if b && !seen[id] {
+				return fmt.Errorf("washhouse: tank %q has no estimate but isn't in the partial's missing", id)
+			}
+		}
 		if known == 0 {
 			return fmt.Errorf("washhouse: a partial needs a known tank: with none, it is null")
 		}
