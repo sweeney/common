@@ -14,7 +14,10 @@ Shared rules, from the contracts:
 
 - **Unknown is `null`, decoded to a nil pointer, never 0.** A key the
   contract says is always present is an error when missing.
-- **New fields are additive:** unknown keys are accepted and ignored. In
+- **New fields are additive:** unknown keys are accepted and ignored. A
+  field added to `wire/washhouse` after its v1 was frozen is tagged
+  `wire:"added"`: always encoded, and decoded as nil when a payload from
+  an older publisher lacks it (`testdata/v0.1` keeps those payloads). In
   `wire/washhouse` a key that differs from a known one only in case is an
   error, since `encoding/json` would let it override the known one.
 - **Never edit a golden to make a test pass.** A change starts in the

@@ -143,12 +143,22 @@ type State struct {
 	UsableL40    *Num          `json:"usable_l40"`
 	UsableL40Low *Num          `json:"usable_l40_low"`
 	LowHotWater  *bool         `json:"low_hot_water"`
+	Partial      *Partial      `json:"partial" wire:"added"`
 	Boiler       Boiler        `json:"boiler"`
 	AmbientC     *Num          `json:"ambient_c"`
 	ActiveDraw   *ActiveDraw   `json:"active_draw"`
 	Meter        Meter         `json:"meter"`
 	Tanktemp     Tanktemp      `json:"tanktemp"`
 	Tanks        []TankSummary `json:"tanks"`
+}
+
+// Partial is the known cylinders' totals while one or more are blind:
+// lower bounds on the system's. Missing names the blind ones.
+type Partial struct {
+	Missing      []string `json:"missing"`
+	StoredKWh    Num      `json:"stored_kwh"`
+	UsableL40    Num      `json:"usable_l40"`
+	UsableL40Low Num      `json:"usable_l40_low"`
 }
 
 // Boiler is the programmer: true on, false off, nil unknown.
@@ -211,6 +221,29 @@ type Tank struct {
 	UAWPerK      *Num      `json:"ua_w_per_k"`
 	ProbesOK     *int      `json:"probes_ok"`
 	ProbesTotal  *int      `json:"probes_total"`
+	Fault        *Fault    `json:"fault" wire:"added"`
+}
+
+// FaultReason is why a cylinder is blind. Open: a consumer accepts one
+// it doesn't know.
+type FaultReason string
+
+// The fault reasons (WIRE.md, Faults).
+const (
+	FaultProbes          FaultReason = "probes"
+	FaultStale           FaultReason = "stale"
+	FaultTanktempOffline FaultReason = "tanktemp_offline"
+)
+
+// Fault is why a cylinder is or was blind, since when, tanktemp's error
+// codes in its latest sweep, counted (empty, never nil, on the wire), and
+// when it was declared lost (tank_lost; nil until then). It holds until
+// tank_restored, so a consumer starting mid-fault knows it was lost.
+type Fault struct {
+	Since  Time           `json:"since"`
+	Reason FaultReason    `json:"reason"`
+	Errors map[string]int `json:"errors"`
+	LostAt *Time          `json:"lost_at"`
 }
 
 // EventType names an event.
@@ -227,6 +260,8 @@ const (
 	EventHeatingStarted        EventType = "heating_started"
 	EventHeatingEnded          EventType = "heating_ended"
 	EventTankStateChanged      EventType = "tank_state_changed"
+	EventTankLost              EventType = "tank_lost"
+	EventTankRestored          EventType = "tank_restored"
 )
 
 // Event is one {base}/events message. Exactly one body is set, the one
@@ -240,6 +275,24 @@ type Event struct {
 	DrawBalanced   *DrawBalanced   `json:"draw_balanced,omitempty"`
 	ContinuousFlow *ContinuousFlow `json:"continuous_flow,omitempty"`
 	Tank           *TankEvent      `json:"tank,omitempty"`
+	TankLost       *TankLost       `json:"tank_lost,omitempty"`
+	TankRestored   *TankRestored   `json:"tank_restored,omitempty"`
+}
+
+// TankLost is a cylinder blind for the configured time: its fault then.
+type TankLost struct {
+	DeviceID string         `json:"device_id"`
+	Reason   FaultReason    `json:"reason"`
+	Errors   map[string]int `json:"errors"`
+	Since    Time           `json:"since"`
+}
+
+// TankRestored is a lost cylinder estimated again for the configured
+// time: when it was lost, and how long it was blind.
+type TankRestored struct {
+	DeviceID  string `json:"device_id"`
+	LostSince Time   `json:"lost_since"`
+	DurationS Num    `json:"duration_s"`
 }
 
 // DrawEnded is the meter's account of an ended draw.
@@ -345,6 +398,8 @@ var body = map[EventType]string{
 	EventHeatingStarted:        "tank",
 	EventHeatingEnded:          "tank",
 	EventTankStateChanged:      "tank",
+	EventTankLost:              "tank_lost",
+	EventTankRestored:          "tank_restored",
 }
 
 // bodies lists the bodies e has set, by key.
@@ -364,6 +419,12 @@ func (e Event) bodies() []string {
 	}
 	if e.Tank != nil {
 		out = append(out, "tank")
+	}
+	if e.TankLost != nil {
+		out = append(out, "tank_lost")
+	}
+	if e.TankRestored != nil {
+		out = append(out, "tank_restored")
 	}
 	return out
 }

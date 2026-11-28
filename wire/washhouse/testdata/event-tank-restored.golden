@@ -1,0 +1,1 @@
+{"schema":"net.swee.washhouse.event.v1","event":"tank_restored","timestamp":"2001-01-02T22:55:23.000Z","tank_restored":{"device_id":"hot_water_cylinder_right","lost_since":"2001-01-01T00:30:17.000Z","duration_s":166986}}
