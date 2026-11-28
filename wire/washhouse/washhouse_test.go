@@ -90,12 +90,13 @@ func statePartial() State {
 func tankFault() Tank {
 	return Tank{DeviceID: right, Timestamp: at("2001-01-01T00:35:17.000Z"), SweepAt: atp("2001-01-01T00:35:17.000Z"),
 		State: StateUnknown, UAWPerK: n(17), ProbesOK: i(0), ProbesTotal: i(5),
-		Fault: &Fault{Since: at("2001-01-01T00:30:17.000Z"), Reason: FaultProbes, Errors: map[string]int{"not_present": 5}}}
+		Fault: &Fault{Since: at("2001-01-01T00:30:17.000Z"), Reason: FaultProbes, Errors: map[string]int{"not_present": 5},
+			LostAt: atp("2001-01-01T00:35:17.000Z")}}
 }
 
 func tankLost() Event {
 	return Event{Event: EventTankLost, Timestamp: at("2001-01-01T00:35:17.000Z"),
-		TankLost: &TankLost{DeviceID: right, Reason: FaultProbes, Errors: map[string]int{"bus_low": 5},
+		TankLost: &TankLost{DeviceID: right, Reason: FaultProbes, Errors: map[string]int{"not_present": 5},
 			Since: at("2001-01-01T00:30:17.000Z")}}
 }
 
@@ -225,6 +226,51 @@ func TestDecodeV01Payloads(t *testing.T) {
 	}
 }
 
+// A fault and the events agree with WIRE.md (tanktemp's review of #18): a
+// blind tank (no estimate) is unknown, a fault not yet lost has no
+// estimate, the reason isn't empty, counts are positive, and no time is
+// after the message's own.
+func TestFaultIsConsistent(t *testing.T) {
+	for name, edit := range map[string]func(*Tank){
+		"blind but cooling":          func(x *Tank) { x.State = StateCooling },
+		"not lost, with an estimate": func(x *Tank) { x.Fault.LostAt = nil; x.StoredKWh = n(8) },
+		"an empty reason":            func(x *Tank) { x.Fault.Reason = "" },
+		"a zero count":               func(x *Tank) { x.Fault.Errors = map[string]int{"bus_low": 0} },
+		"since in the future":        func(x *Tank) { x.Fault.Since = at("2001-01-01T01:00:00.000Z") },
+		"lost before it was blind":   func(x *Tank) { x.Fault.LostAt = atp("2001-01-01T00:00:00.000Z") },
+		"lost in the future":         func(x *Tank) { x.Fault.LostAt = atp("2001-01-01T01:00:00.000Z") },
+	} {
+		x := tankFault()
+		edit(&x)
+		if _, err := EncodeTank(x); err == nil {
+			t.Errorf("a fault with %s was encoded", name)
+		}
+	}
+	// Lost and read again, before tank_restored: the estimate is back,
+	// the fault held, the state whatever it is.
+	x := tankFault()
+	x.State, x.StoredKWh, x.ProbesOK = StateCooling, n(2.8), i(5)
+	if _, err := EncodeTank(x); err != nil {
+		t.Errorf("a lost tank read again: %v", err)
+	}
+	for name, edit := range map[string]func(*Event){
+		"lost: an empty reason":        func(e *Event) { e.TankLost.Reason = "" },
+		"lost: since in the future":    func(e *Event) { e.TankLost.Since = at("2001-01-01T01:00:00.000Z") },
+		"lost: a zero count":           func(e *Event) { e.TankLost.Errors = map[string]int{"x": 0} },
+		"restored: a negative span":    func(e *Event) { e.TankRestored.DurationS = -1 },
+		"restored: lost in the future": func(e *Event) { e.TankRestored.LostSince = at("2001-01-03T00:00:00.000Z") },
+	} {
+		e := tankLost()
+		if name[:8] == "restored" {
+			e = tankRestored()
+		}
+		edit(&e)
+		if _, err := EncodeEvent(e); err == nil {
+			t.Errorf("%s was encoded", name)
+		}
+	}
+}
+
 // A fault's reason is open: one a consumer doesn't know still decodes.
 func TestFaultReasonIsOpen(t *testing.T) {
 	raw, _ := os.ReadFile(filepath.Join("testdata", "tank-fault.golden"))
@@ -267,6 +313,25 @@ func TestFaultAndPartialAreChecked(t *testing.T) {
 	raw, _ = os.ReadFile(filepath.Join("testdata", "state-partial.golden"))
 	if _, err := DecodeState(bytes.Replace(raw, []byte(`"usable_l40_low":261.214`), []byte(`"usable_l40_low":null`), 1)); err == nil {
 		t.Error("a partial with a null figure was decoded")
+	}
+	// statehouse's review of #18: a partial goes with null totals, names
+	// only tanks in tanks[] that are blind there, and needs a known one.
+	for name, edit := range map[string]func(*State){
+		"totals set":               func(s *State) { s.UsableL40 = n(300) },
+		"missing a tank not there": func(s *State) { s.Partial.Missing = []string{"hot_water_cylinder_middle"} },
+		"missing a known tank":     func(s *State) { s.Partial.Missing = []string{left} },
+		"missing listed twice":     func(s *State) { s.Partial.Missing = []string{right, right} },
+		"low_hot_water true":       func(s *State) { s.LowHotWater = b(true) },
+		"no tank known": func(s *State) {
+			s.Tanks[0].StoredKWh = nil
+			s.Partial.Missing = []string{left, right}
+		},
+	} {
+		s := statePartial()
+		edit(&s)
+		if _, err := EncodeState(s); err == nil {
+			t.Errorf("a partial with %s was encoded", name)
+		}
 	}
 }
 

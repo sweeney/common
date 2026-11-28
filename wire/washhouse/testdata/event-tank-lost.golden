@@ -1,1 +1,1 @@
-{"schema":"net.swee.washhouse.event.v1","event":"tank_lost","timestamp":"2001-01-01T00:35:17.000Z","tank_lost":{"device_id":"hot_water_cylinder_right","reason":"probes","errors":{"bus_low":5},"since":"2001-01-01T00:30:17.000Z"}}
+{"schema":"net.swee.washhouse.event.v1","event":"tank_lost","timestamp":"2001-01-01T00:35:17.000Z","tank_lost":{"device_id":"hot_water_cylinder_right","reason":"probes","errors":{"not_present":5},"since":"2001-01-01T00:30:17.000Z"}}

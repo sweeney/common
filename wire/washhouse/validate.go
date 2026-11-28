@@ -47,10 +47,35 @@ func (s State) validate() error {
 		if len(p.Missing) == 0 {
 			return fmt.Errorf("washhouse: a partial names the cylinders missing from it")
 		}
+		if s.StoredKWh != nil || s.UsableL40 != nil || s.UsableL40Low != nil {
+			return fmt.Errorf("washhouse: a partial comes with the totals null")
+		}
+		blind := map[string]bool{}
+		known := 0
+		for _, t := range s.Tanks {
+			blind[t.DeviceID] = t.StoredKWh == nil
+			if t.StoredKWh != nil {
+				known++
+			}
+		}
+		if s.LowHotWater != nil && *s.LowHotWater {
+			return fmt.Errorf("washhouse: low_hot_water is never true from a partial")
+		}
+		seen := map[string]bool{}
 		for _, id := range p.Missing {
 			if err := deviceID(id); err != nil {
 				return err
 			}
+			if seen[id] {
+				return fmt.Errorf("washhouse: a partial's missing lists %q twice", id)
+			}
+			seen[id] = true
+			if b, ok := blind[id]; !ok || !b {
+				return fmt.Errorf("washhouse: a partial's missing %q must be a tank in tanks whose estimate is null", id)
+			}
+		}
+		if known == 0 {
+			return fmt.Errorf("washhouse: a partial needs a known tank: with none, it is null")
 		}
 	}
 	for _, t := range s.Tanks {
@@ -62,7 +87,38 @@ func (s State) validate() error {
 }
 
 func (t Tank) validate() error {
-	return firstErr(deviceID(t.DeviceID), t.State.valid(), validSource(t.HeatSource))
+	if err := firstErr(deviceID(t.DeviceID), t.State.valid(), validSource(t.HeatSource)); err != nil {
+		return err
+	}
+	f := t.Fault
+	if f == nil {
+		return nil
+	}
+	switch {
+	case t.StoredKWh == nil && t.State != StateUnknown:
+		return fmt.Errorf("washhouse: a blind tank's state is unknown, not %s", t.State)
+	case f.LostAt == nil && t.StoredKWh != nil:
+		return fmt.Errorf("washhouse: a fault not yet lost has no estimate")
+	case f.Since.After(t.Timestamp.Time):
+		return fmt.Errorf("washhouse: a fault since %v is after its message's %v", f.Since.Time, t.Timestamp.Time)
+	case f.LostAt != nil && (f.LostAt.Before(f.Since.Time) || f.LostAt.After(t.Timestamp.Time)):
+		return fmt.Errorf("washhouse: lost_at %v must be from since %v to the message's %v", f.LostAt.Time, f.Since.Time, t.Timestamp.Time)
+	}
+	return faultDetail(f.Reason, f.Errors)
+}
+
+// faultDetail checks a fault's reason (open, but not empty) and its error
+// counts (each at least 1).
+func faultDetail(r FaultReason, errs map[string]int) error {
+	if r == "" {
+		return fmt.Errorf("washhouse: a fault's reason is empty")
+	}
+	for code, n := range errs {
+		if code == "" || n < 1 {
+			return fmt.Errorf("washhouse: a fault's error %q counted %d", code, n)
+		}
+	}
+	return nil
 }
 
 // validate checks e's body's values; check (washhouse.go) its shape.
@@ -85,9 +141,17 @@ func (e Event) validate() error {
 		t := e.Tank
 		return firstErr(deviceID(t.DeviceID), t.State.valid(), t.Prev.valid(), validSource(t.HeatSource))
 	case e.TankLost != nil:
-		return deviceID(e.TankLost.DeviceID)
+		x := e.TankLost
+		if x.Since.After(e.Timestamp.Time) {
+			return fmt.Errorf("washhouse: tank_lost since %v is after its timestamp %v", x.Since.Time, e.Timestamp.Time)
+		}
+		return firstErr(deviceID(x.DeviceID), faultDetail(x.Reason, x.Errors))
 	case e.TankRestored != nil:
-		return deviceID(e.TankRestored.DeviceID)
+		x := e.TankRestored
+		if x.DurationS < 0 || x.LostSince.After(e.Timestamp.Time) {
+			return fmt.Errorf("washhouse: tank_restored lost since %v for %v s, at %v", x.LostSince.Time, x.DurationS, e.Timestamp.Time)
+		}
+		return deviceID(x.DeviceID)
 	}
 	return nil
 }

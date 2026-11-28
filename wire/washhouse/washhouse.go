@@ -235,12 +235,15 @@ const (
 	FaultTanktempOffline FaultReason = "tanktemp_offline"
 )
 
-// Fault is why a cylinder is blind, since when, and tanktemp's error codes
-// in its latest sweep, counted (empty, never nil, on the wire).
+// Fault is why a cylinder is or was blind, since when, tanktemp's error
+// codes in its latest sweep, counted (empty, never nil, on the wire), and
+// when it was declared lost (tank_lost; nil until then). It holds until
+// tank_restored, so a consumer starting mid-fault knows it was lost.
 type Fault struct {
 	Since  Time           `json:"since"`
 	Reason FaultReason    `json:"reason"`
 	Errors map[string]int `json:"errors"`
+	LostAt *Time          `json:"lost_at"`
 }
 
 // EventType names an event.
