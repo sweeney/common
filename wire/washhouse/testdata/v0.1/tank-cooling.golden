@@ -1,0 +1,1 @@
+{"schema":"net.swee.washhouse.tank.v1","device_id":"hot_water_cylinder_right","timestamp":"2001-01-01T00:36:32.000Z","sweep_at":"2001-01-01T00:36:32.000Z","state":"cooling","heat_source":null,"stored_kwh":8.315,"mean_c":47.906,"top_c":61.375,"hot_l":140.214,"usable_l40":184.331,"usable_l40_low":156.681,"power_kw":-1.33,"ua_w_per_k":17,"probes_ok":5,"probes_total":5}

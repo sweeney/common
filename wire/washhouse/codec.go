@@ -20,12 +20,25 @@ func EncodeState(s State) ([]byte, error) {
 	return json.Marshal(s)
 }
 
+// noNilMap is m, or an empty map: a fault's errors are {} on the wire.
+func noNilMap(m map[string]int) map[string]int {
+	if m == nil {
+		return map[string]int{}
+	}
+	return m
+}
+
 // EncodeTank is t's payload, with its schema set.
 func EncodeTank(t Tank) ([]byte, error) {
 	if err := t.validate(); err != nil {
 		return nil, err
 	}
 	t.Schema = SchemaTank
+	if t.Fault != nil {
+		f := *t.Fault
+		f.Errors = noNilMap(f.Errors)
+		t.Fault = &f
+	}
 	return json.Marshal(t)
 }
 
@@ -46,6 +59,11 @@ func EncodeEvent(e Event) ([]byte, error) {
 			c.Reasons = []Reason{}
 		}
 		e.DrawBalanced = &c
+	}
+	if e.TankLost != nil {
+		c := *e.TankLost
+		c.Errors = noNilMap(c.Errors)
+		e.TankLost = &c
 	}
 	return json.Marshal(e)
 }
@@ -162,9 +180,10 @@ var (
 func isNull(raw []byte) bool { return bytes.Equal(bytes.TrimSpace(raw), []byte("null")) }
 
 // present checks raw against t, recursively: every key of a struct is
-// there unless its field is omitempty, and only a pointer may be null
-// (an omitempty one is absent, never null). The values themselves are
-// json.Unmarshal's to check.
+// there unless its field is omitempty or added since v1 was frozen (tagged
+// wire:"added": a payload from an older washhouse lacks it, and it decodes
+// as nil), and only a pointer may be null (an omitempty one is absent,
+// never null). The values themselves are json.Unmarshal's to check.
 func present(raw []byte, t reflect.Type, path string) error {
 	if t.Kind() == reflect.Pointer {
 		if isNull(raw) {
@@ -197,9 +216,10 @@ func present(raw []byte, t reflect.Type, path string) error {
 			f := t.Field(i)
 			key, opts, _ := strings.Cut(f.Tag.Get("json"), ",")
 			omit := strings.Contains(opts, "omitempty")
+			added := f.Tag.Get("wire") == "added"
 			v, ok := m[key]
 			switch {
-			case !ok && omit:
+			case !ok && (omit || added):
 				continue
 			case !ok:
 				return fmt.Errorf("%s.%s is missing", path, key)

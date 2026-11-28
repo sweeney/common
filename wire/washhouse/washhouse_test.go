@@ -54,7 +54,7 @@ var since = at("2000-12-31T23:54:43.000Z")
 func stateDraw() State {
 	return State{
 		Timestamp: at("2001-01-01T00:17:43.000Z"),
-		StoredKWh: n(21.79), UsableL40: n(263.5), UsableL40Low: n(223.975),
+		StoredKWh: n(21.79), UsableL40: n(357), UsableL40Low: n(303.45),
 		LowHotWater: b(false),
 		Boiler:      Boiler{HW: b(false), CH: b(false)},
 		AmbientC:    n(25.7),
@@ -68,6 +68,40 @@ func stateDraw() State {
 			{DeviceID: right, State: StateDrawing, StoredKWh: n(10.74), UsableL40: n(151.2), TopC: n(61.9)},
 		},
 	}
+}
+
+func statePartial() State {
+	return State{
+		Timestamp:   at("2001-01-01T00:30:47.000Z"),
+		LowHotWater: b(false),
+		Partial:     &Partial{Missing: []string{right}, StoredKWh: 11.275, UsableL40: 307.311, UsableL40Low: 261.214},
+		Boiler:      Boiler{HW: b(false), CH: b(true)},
+		AmbientC:    n(19.4),
+		Meter: Meter{Timestamp: atp("2001-01-01T00:30:47.000Z"), CountingSince: &since, Count: u(54),
+			LitresSinceStart: n(54)},
+		Tanktemp: Tanktemp{Timestamp: atp("2001-01-01T00:09:43.000Z"), Online: b(true), Version: str("4aba4d5")},
+		Tanks: []TankSummary{
+			{DeviceID: left, State: StateCooling, StoredKWh: n(11.275), UsableL40: n(307.311), TopC: n(63.875)},
+			{DeviceID: right, State: StateUnknown},
+		},
+	}
+}
+
+func tankFault() Tank {
+	return Tank{DeviceID: right, Timestamp: at("2001-01-01T00:35:17.000Z"), SweepAt: atp("2001-01-01T00:35:17.000Z"),
+		State: StateUnknown, UAWPerK: n(17), ProbesOK: i(0), ProbesTotal: i(5),
+		Fault: &Fault{Since: at("2001-01-01T00:30:17.000Z"), Reason: FaultProbes, Errors: map[string]int{"not_present": 5}}}
+}
+
+func tankLost() Event {
+	return Event{Event: EventTankLost, Timestamp: at("2001-01-01T00:35:17.000Z"),
+		TankLost: &TankLost{DeviceID: right, Reason: FaultProbes, Errors: map[string]int{"bus_low": 5},
+			Since: at("2001-01-01T00:30:17.000Z")}}
+}
+
+func tankRestored() Event {
+	return Event{Event: EventTankRestored, Timestamp: at("2001-01-02T22:55:23.000Z"),
+		TankRestored: &TankRestored{DeviceID: right, LostSince: at("2001-01-01T00:30:17.000Z"), DurationS: 166986}}
 }
 
 func stateUnknown() State {
@@ -159,6 +193,8 @@ func TestGoldenState(t *testing.T) {
 	golden(t, "state-draw.golden", got, err)
 	got, err = EncodeState(stateUnknown())
 	golden(t, "state-unknown.golden", got, err)
+	got, err = EncodeState(statePartial())
+	golden(t, "state-partial.golden", got, err)
 }
 
 func TestGoldenTank(t *testing.T) {
@@ -166,6 +202,72 @@ func TestGoldenTank(t *testing.T) {
 	golden(t, "tank-cooling.golden", got, err)
 	got, err = EncodeTank(tankUnknown())
 	golden(t, "tank-unknown.golden", got, err)
+	got, err = EncodeTank(tankFault())
+	golden(t, "tank-fault.golden", got, err)
+}
+
+// A payload from before partial and fault were added (v0.1's goldens,
+// kept byte for byte) still decodes, with them nil: they are additive.
+func TestDecodeV01Payloads(t *testing.T) {
+	for _, name := range []string{"state-draw.golden", "state-unknown.golden"} {
+		raw, _ := os.ReadFile(filepath.Join("testdata", "v0.1", name))
+		s, err := DecodeState(raw)
+		if err != nil || s.Partial != nil {
+			t.Errorf("v0.1 %s: %v, partial %+v", name, err, s.Partial)
+		}
+	}
+	for _, name := range []string{"tank-cooling.golden", "tank-unknown.golden"} {
+		raw, _ := os.ReadFile(filepath.Join("testdata", "v0.1", name))
+		x, err := DecodeTank(raw)
+		if err != nil || x.Fault != nil {
+			t.Errorf("v0.1 %s: %v, fault %+v", name, err, x.Fault)
+		}
+	}
+}
+
+// A fault's reason is open: one a consumer doesn't know still decodes.
+func TestFaultReasonIsOpen(t *testing.T) {
+	raw, _ := os.ReadFile(filepath.Join("testdata", "tank-fault.golden"))
+	raw = bytes.Replace(raw, []byte(`"reason":"probes"`), []byte(`"reason":"something_new"`), 1)
+	if x, err := DecodeTank(raw); err != nil || x.Fault.Reason != "something_new" {
+		t.Errorf("an unknown fault reason: %+v, %v", x.Fault, err)
+	}
+}
+
+// A partial's missing list names device ids, and a fault's errors are a
+// map (an empty one when none): both are checked.
+func TestFaultAndPartialAreChecked(t *testing.T) {
+	s := statePartial()
+	s.Partial.Missing = []string{"Bad Id"}
+	if _, err := EncodeState(s); err == nil {
+		t.Error("a partial missing a bad device id was encoded")
+	}
+	s = statePartial()
+	s.Partial.Missing = nil
+	if _, err := EncodeState(s); err == nil {
+		t.Error("a partial missing no tank was encoded")
+	}
+	x := tankFault()
+	x.Fault.Errors = nil
+	raw, err := EncodeTank(x)
+	if err != nil || !bytes.Contains(raw, []byte(`"errors":{}`)) {
+		t.Errorf("no errors should encode as {}: %s, %v", raw, err)
+	}
+	raw, _ = os.ReadFile(filepath.Join("testdata", "tank-fault.golden"))
+	if _, err := DecodeTank(bytes.Replace(raw, []byte(`,"errors":{"not_present":5}`), nil, 1)); err == nil {
+		t.Error("a fault without errors was decoded")
+	}
+	lost, restored := tankLost(), tankRestored()
+	lost.TankLost.DeviceID, restored.TankRestored.DeviceID = "Bad Id", "Bad Id"
+	for _, e := range []Event{lost, restored} {
+		if _, err := EncodeEvent(e); err == nil {
+			t.Errorf("%s with a bad device id was encoded", e.Event)
+		}
+	}
+	raw, _ = os.ReadFile(filepath.Join("testdata", "state-partial.golden"))
+	if _, err := DecodeState(bytes.Replace(raw, []byte(`"usable_l40_low":261.214`), []byte(`"usable_l40_low":null`), 1)); err == nil {
+		t.Error("a partial with a null figure was decoded")
+	}
 }
 
 var eventGoldens = []struct {
@@ -180,6 +282,8 @@ var eventGoldens = []struct {
 	{"event-continuous-flow-ended.golden", flowEnded},
 	{"event-heating-started.golden", heatingStarted},
 	{"event-tank-state-changed.golden", tankStateChanged},
+	{"event-tank-lost.golden", tankLost},
+	{"event-tank-restored.golden", tankRestored},
 }
 
 func TestGoldenEvents(t *testing.T) {
@@ -246,7 +350,7 @@ func TestTimeFormat(t *testing.T) {
 }
 
 func TestDecodeRoundTrip(t *testing.T) {
-	for _, s := range []State{stateDraw(), stateUnknown()} {
+	for _, s := range []State{stateDraw(), stateUnknown(), statePartial()} {
 		raw, _ := EncodeState(s)
 		got, err := DecodeState(raw)
 		if err != nil {
@@ -257,7 +361,7 @@ func TestDecodeRoundTrip(t *testing.T) {
 			t.Errorf("state round trip\n got %+v\nwant %+v", got, s)
 		}
 	}
-	for _, x := range []Tank{tankCooling(), tankUnknown()} {
+	for _, x := range []Tank{tankCooling(), tankUnknown(), tankFault()} {
 		raw, _ := EncodeTank(x)
 		got, err := DecodeTank(raw)
 		x.Schema = SchemaTank
@@ -466,7 +570,7 @@ func TestEncodersFillNilLists(t *testing.T) {
 // contract nobody holds to.
 func TestEveryGoldenIsUsed(t *testing.T) {
 	used := map[string]bool{"state-draw.golden": true, "state-unknown.golden": true, "tank-cooling.golden": true,
-		"tank-unknown.golden": true, "status-heartbeat.golden": true, "status-shutdown.golden": true, "lwt.golden": true}
+		"tank-unknown.golden": true, "state-partial.golden": true, "tank-fault.golden": true, "status-heartbeat.golden": true, "status-shutdown.golden": true, "lwt.golden": true}
 	for _, g := range eventGoldens {
 		used[g.name] = true
 	}
@@ -478,5 +582,14 @@ func TestEveryGoldenIsUsed(t *testing.T) {
 		if !used[filepath.Base(f)] {
 			t.Errorf("%s is pinned by no test", f)
 		}
+	}
+}
+
+// The v0.1 goldens are pinned by TestDecodeV01Payloads, and stay byte for
+// byte as v0.1 published them.
+func TestV01GoldensAreKept(t *testing.T) {
+	files, _ := filepath.Glob(filepath.Join("testdata", "v0.1", "*.golden"))
+	if len(files) != 4 {
+		t.Errorf("%d v0.1 goldens, want the 4 TestDecodeV01Payloads reads", len(files))
 	}
 }

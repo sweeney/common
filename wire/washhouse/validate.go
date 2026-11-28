@@ -43,6 +43,16 @@ func firstErr(errs ...error) error {
 }
 
 func (s State) validate() error {
+	if p := s.Partial; p != nil {
+		if len(p.Missing) == 0 {
+			return fmt.Errorf("washhouse: a partial names the cylinders missing from it")
+		}
+		for _, id := range p.Missing {
+			if err := deviceID(id); err != nil {
+				return err
+			}
+		}
+	}
 	for _, t := range s.Tanks {
 		if err := firstErr(deviceID(t.DeviceID), t.State.valid(), validSource(t.HeatSource)); err != nil {
 			return err
@@ -74,6 +84,10 @@ func (e Event) validate() error {
 	case e.Tank != nil:
 		t := e.Tank
 		return firstErr(deviceID(t.DeviceID), t.State.valid(), t.Prev.valid(), validSource(t.HeatSource))
+	case e.TankLost != nil:
+		return deviceID(e.TankLost.DeviceID)
+	case e.TankRestored != nil:
+		return deviceID(e.TankRestored.DeviceID)
 	}
 	return nil
 }
